@@ -1,0 +1,3 @@
+/home/24289/ftpsrv/build/switch/_deps/libusbhsfs-subbuild/CMakeFiles/libusbhsfs-populate.dir
+/home/24289/ftpsrv/build/switch/_deps/libusbhsfs-subbuild/CMakeFiles/edit_cache.dir
+/home/24289/ftpsrv/build/switch/_deps/libusbhsfs-subbuild/CMakeFiles/rebuild_cache.dir

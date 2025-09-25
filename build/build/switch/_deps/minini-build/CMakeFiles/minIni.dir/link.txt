@@ -1,0 +1,2 @@
+"/opt/devkitpro/devkitA64/bin/aarch64-none-elf-gcc-ar.exe" qc libminIni.a "CMakeFiles/minIni.dir/source/minGlue-nx.o" CMakeFiles/minIni.dir/source/minGlue.o CMakeFiles/minIni.dir/source/minIni.o
+"/opt/devkitpro/devkitA64/bin/aarch64-none-elf-gcc-ranlib.exe" libminIni.a
