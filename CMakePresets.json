@@ -1,0 +1,99 @@
+{
+    "version": 3,
+    "cmakeMinimumRequired": {
+        "major": 3,
+        "minor": 21,
+        "patch": 0
+    },
+    "configurePresets": [
+        {
+            "name": "core",
+            "displayName": "core",
+            "binaryDir": "${sourceDir}/build/${presetName}",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release"
+            }
+        },
+        {
+            "name": "core-dev",
+            "displayName": "core-dev",
+            "binaryDir": "${sourceDir}/build/${presetName}",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug"
+            }
+        },
+        {
+            "name": "nds",
+            "displayName": "nds",
+            "inherits": [ "core" ],
+            "toolchainFile": "$env{DEVKITPRO}/cmake/NDS.cmake"
+        },
+        {
+            "name": "3ds",
+            "displayName": "3ds",
+            "inherits": [ "core" ],
+            "toolchainFile": "$env{DEVKITPRO}/cmake/3DS.cmake"
+        },
+        {
+            "name": "wii",
+            "displayName": "wii",
+            "inherits": [ "core" ],
+            "toolchainFile": "$env{DEVKITPRO}/cmake/Wii.cmake"
+        },
+        {
+            "name": "switch",
+            "displayName": "switch",
+            "inherits": [ "core" ],
+            "toolchainFile": "$env{DEVKITPRO}/cmake/Switch.cmake",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "MinSizeRel"
+            }
+        },
+        {
+            "name": "ps4",
+            "displayName": "ps4",
+            "inherits": [ "core" ],
+            "toolchainFile": "$env{OO_PS4_TOOLCHAIN}/cmake/ps4.cmake",
+            "cacheVariables": {
+                "PS4": true
+            }
+        }
+    ],
+    "buildPresets": [
+        {
+            "name": "core",
+            "configurePreset": "core",
+            "jobs": 16
+        },
+        {
+            "name": "core-dev",
+            "configurePreset": "core-dev",
+            "jobs": 16
+        },
+        {
+            "name": "nds",
+            "configurePreset": "nds",
+            "jobs": 16
+        },
+        {
+            "name": "3ds",
+            "configurePreset": "3ds",
+            "jobs": 16
+        },
+        {
+            "name": "wii",
+            "configurePreset": "wii",
+            "jobs": 16
+        },
+        {
+            "name": "switch",
+            "configurePreset": "switch",
+            "jobs": 16
+        },
+        {
+            "name": "ps4",
+            "configurePreset": "ps4",
+            "jobs": 16
+        }
+    ]
+}
