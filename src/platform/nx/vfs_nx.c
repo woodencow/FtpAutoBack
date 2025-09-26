@@ -536,6 +536,16 @@ void utilsReplaceIllegalCharacters(char *str, bool ascii_only)
 }
 
 /**
+ * @brief 获取是否跳过ASCII字符转换的配置
+ * 
+ * @return bool 如果为true，则跳过ASCII字符转换；否则进行转换
+ */
+bool vfs_get_skip_ascii_convert(void)
+{
+    return g_skip_ascii_convert;
+}
+
+/**
  * BIS分区挂载条目结构体
  * 用于定义BIS分区的名称和对应的分区ID
  */

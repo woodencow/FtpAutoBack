@@ -173,6 +173,9 @@ Result get_app_name2(u64 app_id, NcmContentMetaDatabase* db, NcmContentStorage* 
 // taken from nxdumptool.
 void utilsReplaceIllegalCharacters(char *str, bool ascii_only);
 
+// 获取是否跳过ASCII字符转换的配置
+bool vfs_get_skip_ascii_convert(void);
+
 #define ARRAY_SIZE(x) (sizeof(x) / sizeof(x[0]))
 
 #ifdef __cplusplus

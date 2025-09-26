@@ -1,6 +1,15 @@
 /**
  * Copyright 2024 TotalJustice.
  * SPDX-License-Identifier: MIT
+ * 
+ * vfs_nx_save.c - Nintendo Switch存档文件系统虚拟文件系统实现
+ * 
+ * 本文件实现了Switch存档文件系统的虚拟文件系统接口，主要功能包括：
+ * 1. ZIP格式的存档文件创建和读取
+ * 2. 存档文件系统的挂载和管理
+ * 3. 用户账户和存档类型的处理
+ * 4. 文件路径解析和转换
+ * 5. VFS操作接口的实现
  */
 
 #include "ftpsrv_vfs.h"
@@ -14,84 +23,96 @@
 
 #define min(x, y) ((x) < (y) ? (x) : (y))
 
-#define LOCAL_HEADER_SIG 0x4034B50
-#define FILE_HEADER_SIG 0x2014B50
-#define DATA_DESCRIPTOR_SIG 0x8074B50
-#define END_RECORD_SIG 0x6054B50
+// ZIP文件格式相关的魔数定义
+#define LOCAL_HEADER_SIG 0x4034B50      // 本地文件头签名
+#define FILE_HEADER_SIG 0x2014B50       // 中央目录文件头签名
+#define DATA_DESCRIPTOR_SIG 0x8074B50   // 数据描述符签名
+#define END_RECORD_SIG 0x6054B50        // 中央目录结束记录签名
 
+// ZIP本地文件头结构体
 #pragma pack(push,1)
 typedef struct mmz_LocalHeader {
-    uint32_t sig;
-    uint16_t version;
-    uint16_t flags;
-    uint16_t compression;
-    uint16_t modtime;
-    uint16_t moddate;
-    uint32_t crc32;
-    uint32_t compressed_size;
-    uint32_t uncompressed_size;
-    uint16_t filename_len;
-    uint16_t extrafield_len;
+    uint32_t sig;               // 签名 (0x04034b50)
+    uint16_t version;           // 解压所需版本
+    uint16_t flags;             // 通用位标志
+    uint16_t compression;       // 压缩方法
+    uint16_t modtime;           // 最后修改时间
+    uint16_t moddate;           // 最后修改日期
+    uint32_t crc32;             // CRC-32校验值
+    uint32_t compressed_size;   // 压缩后大小
+    uint32_t uncompressed_size; // 压缩前大小
+    uint16_t filename_len;      // 文件名长度
+    uint16_t extrafield_len;    // 扩展字段长度
 } mmz_LocalHeader;
 #pragma pack(pop)
 
+// ZIP数据描述符结构体
 #pragma pack(push,1)
 typedef struct mmz_DataDescriptor {
-    uint32_t sig;
-    uint32_t crc32;
-    uint32_t compressed_size;
-    uint32_t uncompressed_size;
+    uint32_t sig;               // 签名 (0x08074b50)
+    uint32_t crc32;             // CRC-32校验值
+    uint32_t compressed_size;   // 压缩后大小
+    uint32_t uncompressed_size; // 压缩前大小
 } mmz_DataDescriptor;
 #pragma pack(pop)
 
+// ZIP中央目录文件头结构体
 #pragma pack(push,1)
 typedef struct mmz_FileHeader {
-    uint32_t sig;
-    uint16_t version;
-    uint16_t version_needed;
-    uint16_t flags;
-    uint16_t compression;
-    uint16_t modtime;
-    uint16_t moddate;
-    uint32_t crc32;
-    uint32_t compressed_size;
-    uint32_t uncompressed_size;
-    uint16_t filename_len;
-    uint16_t extrafield_len;
-    uint16_t filecomment_len;
-    uint16_t disk_start;
-    uint16_t internal_attr;
-    uint32_t external_attr;
-    uint32_t local_hdr_off;
+    uint32_t sig;               // 签名 (0x02014b50)
+    uint16_t version;           // 压缩使用的版本
+    uint16_t version_needed;    // 解压所需版本
+    uint16_t flags;             // 通用位标志
+    uint16_t compression;       // 压缩方法
+    uint16_t modtime;           // 最后修改时间
+    uint16_t moddate;           // 最后修改日期
+    uint32_t crc32;             // CRC-32校验值
+    uint32_t compressed_size;   // 压缩后大小
+    uint32_t uncompressed_size; // 压缩前大小
+    uint16_t filename_len;      // 文件名长度
+    uint16_t extrafield_len;    // 扩展字段长度
+    uint16_t filecomment_len;   // 文件注释长度
+    uint16_t disk_start;        // 文件开始磁盘号
+    uint16_t internal_attr;     // 内部文件属性
+    uint32_t external_attr;     // 外部文件属性
+    uint32_t local_hdr_off;     // 本地文件头相对偏移
 } mmz_FileHeader;
 #pragma pack(pop)
 
+// ZIP中央目录结束记录结构体
 #pragma pack(push,1)
 typedef struct mmz_EndRecord {
-    uint32_t sig;
-    uint16_t disk_number;
-    uint16_t disk_wcd;
-    uint16_t disk_entries;
-    uint16_t total_entries;
-    uint32_t central_directory_size;
-    uint32_t file_hdr_off;
-    uint16_t comment_len;
+    uint32_t sig;                   // 签名 (0x06054b50)
+    uint16_t disk_number;           // 当前磁盘号
+    uint16_t disk_wcd;              // 中央目录开始磁盘号
+    uint16_t disk_entries;          // 当前磁盘中央目录记录数
+    uint16_t total_entries;         // 中央目录记录总数
+    uint32_t central_directory_size; // 中央目录大小
+    uint32_t file_hdr_off;          // 中央目录偏移
+    uint16_t comment_len;           // 注释长度
 } mmz_EndRecord;
 #pragma pack(pop)
 
+// 文件信息缓冲区结构体
 struct mmz_FileInfoBuffer {
-    struct mmz_FileInfoMeta meta;
-    char path[FS_MAX_PATH];
+    struct mmz_FileInfoMeta meta;   // 文件元数据
+    char path[FS_MAX_PATH];         // 文件路径
 };
 
-// struct mm
+// ZIP数据缓冲区结构体
 struct mmz_DataBuf {
-    s64 fbuf_size; // internal
-    FsDirectoryEntry entry;
-    char path[FS_MAX_PATH];
-    char path_temp[FS_MAX_PATH];
+    s64 fbuf_size;                  // 内部缓冲区大小
+    FsDirectoryEntry entry;         // 目录条目
+    char path[FS_MAX_PATH];         // 当前路径
+    char path_temp[FS_MAX_PATH];    // 临时路径
 };
 
+/**
+ * 构建ZIP本地文件头
+ * @param mz ZIP数据结构指针
+ * @param local 本地文件头结构体指针
+ * @return 本地文件头的总大小（包括文件名）
+ */
 static u32 mmz_build_local_header(const struct mmz_Data* mz, struct mmz_LocalHeader* local) {
     memset(local, 0, sizeof(*local));
     local->sig = LOCAL_HEADER_SIG;
@@ -105,6 +126,12 @@ static u32 mmz_build_local_header(const struct mmz_Data* mz, struct mmz_LocalHea
     return sizeof(*local) + mz->meta.string_len;
 }
 
+/**
+ * 构建ZIP中央目录文件头
+ * @param mz ZIP数据结构指针
+ * @param file 文件头结构体指针
+ * @return 文件头的总大小（包括文件名）
+ */
 static u32 mmz_build_file_header(const struct mmz_Data* mz, struct mmz_FileHeader* file) {
     memset(file, 0, sizeof(*file));
     file->sig = FILE_HEADER_SIG;
@@ -123,6 +150,12 @@ static u32 mmz_build_file_header(const struct mmz_Data* mz, struct mmz_FileHeade
     return sizeof(*file) + mz->meta.string_len;
 }
 
+/**
+ * 构建ZIP数据描述符
+ * @param mz ZIP数据结构指针
+ * @param desc 数据描述符结构体指针
+ * @return 数据描述符的大小
+ */
 static u32 mmz_build_data_descriptor(const struct mmz_Data* mz, struct mmz_DataDescriptor* desc) {
     memset(desc, 0, sizeof(*desc));
     desc->sig = DATA_DESCRIPTOR_SIG;
@@ -132,6 +165,12 @@ static u32 mmz_build_data_descriptor(const struct mmz_Data* mz, struct mmz_DataD
     return sizeof(*desc);
 }
 
+/**
+ * 构建ZIP结束记录
+ * @param mz ZIP数据结构指针
+ * @param rec 结束记录结构体指针
+ * @return 结束记录的大小
+ */
 static u32 mmz_build_end_record(const struct mmz_Data* mz, struct mmz_EndRecord* rec) {
     memset(rec, 0, sizeof(*rec));
     rec->sig = END_RECORD_SIG;
@@ -142,6 +181,13 @@ static u32 mmz_build_end_record(const struct mmz_Data* mz, struct mmz_EndRecord*
     return sizeof(*rec);
 }
 
+/**
+ * 向ZIP文件添加单个文件
+ * @param mz ZIP数据结构指针
+ * @param db 数据缓冲区结构体指针
+ * @param path 文件路径
+ * @return 操作结果
+ */
 static Result mmz_add_file(struct mmz_Data* mz, struct mmz_DataBuf* db, const char* path) {
     // skip leading root path, zip paths are relative.
     if (path[0] == '/') {
@@ -170,6 +216,13 @@ static Result mmz_add_file(struct mmz_Data* mz, struct mmz_DataBuf* db, const ch
     return rc;
 }
 
+/**
+ * 向ZIP文件添加目录（递归处理）
+ * @param mz ZIP数据结构指针
+ * @param db 数据缓冲区结构体指针
+ * @param path 目录路径
+ * @return 操作结果
+ */
 static Result mmz_add_dir(struct mmz_Data* mz, struct mmz_DataBuf* db, const char* path) {
     Result rc;
     FsDir dir;
@@ -249,6 +302,12 @@ end:
     return rc;
 }
 
+/**
+ * @brief 从ZIP数据缓冲区读取文件信息
+ * @param mz ZIP数据结构指针
+ * @param buf 文件信息缓冲区指针
+ * @return Result 操作结果
+ */
 static Result mmz_read_buffer_info(struct mmz_Data* mz, struct mmz_FileInfoBuffer* buf) {
     Result rc;
     u64 bytes_read;
@@ -411,28 +470,34 @@ static Result mmz_read_buffer_info(struct mmz_Data* mz, struct mmz_FileInfoBuffe
     return size;
 }
 
+/**
+ * @brief 存档账户信息结构体
+ */
 struct SaveAcc {
-    AccountUid uid;
-    char name[0x20];
+    AccountUid uid;     // 用户账户ID
+    char name[0x20];    // 用户名称
 };
 
-// hos only allows save fs to be mounted once...
-// to work around this, we keep a cache of 16 saves (plenty)
+// HOS系统只允许存档文件系统挂载一次...
+// 为了解决这个问题，我们保持一个16个存档的缓存（足够了）
+/**
+ * @brief 存档缓存条目结构体
+ */
 struct SaveCacheEntry {
-    FsFileSystem fs;
-    u64 app_id;
-    AccountUid uid;
-    FsSaveDataType type;
-    u32 ref_count;
+    FsFileSystem fs;        // 文件系统对象
+    u64 app_id;            // 应用程序ID
+    AccountUid uid;        // 用户账户ID
+    FsSaveDataType type;   // 存档数据类型
+    u32 ref_count;         // 引用计数
 };
 
-static struct SaveCacheEntry g_save_cache[16];
-static struct SaveAcc g_acc_profile[12];
-static s32 g_acc_count;
-static bool g_writable;
+static struct SaveCacheEntry g_save_cache[16];  // 存档缓存数组
+static struct SaveAcc g_acc_profile[12];        // 账户配置文件数组
+static s32 g_acc_count;                         // 账户数量
+static bool g_writable;                         // 是否可写标志
 
-// list of all characters that are invalid for fat,
-// these are coverted to "_"
+// 所有对FAT文件系统无效的字符列表，
+// 这些字符会被转换为"_"
 static const char INVALID_CHAR_TABLE[] = {
     '<',
     '>',
@@ -452,29 +517,76 @@ static const char INVALID_CHAR_TABLE[] = {
     '%', // probably invalid
 };
 
+/**
+ * @brief 使ZIP文件中的字符串有效化
+ * 
+ * 此函数用于清理字符串，使其符合ZIP文件格式和FAT文件系统的要求。
+ * 根据skip_ascii_convert配置决定是否处理非ASCII字符。
+ * 主要处理以下几类字符：
+ * 1. 控制字符（< 0x20）
+ * 2. 非ASCII字符（>= 0x80，根据配置处理）
+ * 3. FAT文件系统中的无效字符（如 < > : " / \ | ? * 等）
+ * 
+ * @param str 需要处理的字符串（会被直接修改）
+ * 
+ * 处理规则：
+ * - 始终替换控制字符（0x00-0x1F）为下划线
+ * - 根据skip_ascii_convert配置处理非ASCII字符（>= 0x80）：
+ *   - 如果skip_ascii_convert为false：
+ *     - 特殊处理：'é' (0xC3 0xA9) 和 右单引号 (0xE2 0x80 0x99)
+ *     - 其他非ASCII字符替换为下划线
+ *   - 如果skip_ascii_convert为true：保留非ASCII字符（如中文）
+ * - 始终处理ASCII无效字符（来自INVALID_CHAR_TABLE）：
+ *   - 如果是字符串末尾，截断字符串
+ *   - 如果下一个字符不是空格，替换为下划线
+ *   - 如果下一个字符是空格，删除该字符
+ */
 static void make_zip_string_valid(char* str) {
+    // 获取是否跳过ASCII转换的配置
+    bool skip_ascii_convert = vfs_get_skip_ascii_convert();
+    
     for (int i = 0; str[i]; i++) {
-        const unsigned char c = str[i];
-        const unsigned char c2 = str[i + 1];
-        if (c < 0x20 || c >= 0x80) {
-            if (c == 195 && c2 == 169) {
-                str[i + 1] = 'e';
-                memcpy(str + i, str + i + 1, strlen(str) - i);
-            } else if (c == 226 && c2 == 128 && (unsigned char)str[i + 2] == 153) {
-                str[i + 2] = '\'';
-                memcpy(str + i, str + i + 2, strlen(str) - i);
-            } else {
+        const unsigned char c = str[i];        // 当前字符
+        const unsigned char c2 = str[i + 1];   // 下一个字符
+        
+        // 处理控制字符和非ASCII字符（< 0x20 或 >= 0x80）
+        if (c < 0x20 || (!skip_ascii_convert && c >= 0x80)) {
+            // 如果不跳过ASCII转换，处理非ASCII字符
+            if (!skip_ascii_convert && c >= 0x80) {
+                // 特殊处理UTF-8编码的 'é' 字符 (0xC3 0xA9)
+                if (c == 195 && c2 == 169) {
+                    str[i + 1] = 'e';  // 将第二个字节改为 'e'
+                    memcpy(str + i, str + i + 1, strlen(str) - i);  // 删除第一个字节
+                } 
+                // 特殊处理UTF-8编码的右单引号 (0xE2 0x80 0x99)
+                else if (c == 226 && c2 == 128 && (unsigned char)str[i + 2] == 153) {
+                    str[i + 2] = '\'';  // 将第三个字节改为单引号
+                    memcpy(str + i, str + i + 2, strlen(str) - i);  // 删除前两个字节
+                } 
+                // 其他非ASCII字符直接替换为下划线
+                else {
+                    str[i] = '_';
+                }
+            }
+            // 处理控制字符（始终处理，不受skip_ascii_convert影响）
+            else if (c < 0x20) {
                 str[i] = '_';
             }
-        } else {
+        } 
+        // 处理ASCII字符中的无效字符
+        else {
+            // 检查是否为FAT文件系统无效字符
             for (int j = 0; j < ARRAY_SIZE(INVALID_CHAR_TABLE); j++) {
                 if (c == INVALID_CHAR_TABLE[j]) {
-                    // see what the next character is
+                    // 根据下一个字符决定处理方式
                     if (str[i + 1] == '\0') {
+                        // 如果是字符串末尾，直接截断
                         str[i] = '\0';
                     } else if (str[i + 1] != ' ') {
+                        // 如果下一个字符不是空格，替换为下划线
                         str[i] = '_';
                     } else {
+                        // 如果下一个字符是空格，删除当前字符
                         memcpy(str + i, str + i + 1, strlen(str) - i);
                     }
                     break;
@@ -484,6 +596,11 @@ static void make_zip_string_valid(char* str) {
     }
 }
 
+/**
+ * @brief 挂载存档文件系统
+ * @param d 存档路径数据指针
+ * @return FsFileSystem* 成功时返回文件系统指针，失败时返回NULL
+ */
 static FsFileSystem* mount_save_fs(const struct SavePathData* d) {
     for (int i = 0; i < ARRAY_SIZE(g_save_cache); i++) {
         struct SaveCacheEntry* entry = &g_save_cache[i];
@@ -531,6 +648,10 @@ static FsFileSystem* mount_save_fs(const struct SavePathData* d) {
     return NULL;
 }
 
+/**
+ * @brief 卸载存档文件系统
+ * @param d 存档路径数据指针
+ */
 static void unmount_save_fs(const struct SavePathData* d) {
     for (int i = 0; i < ARRAY_SIZE(g_save_cache); i++) {
         struct SaveCacheEntry* entry = &g_save_cache[i];
@@ -755,32 +876,54 @@ static int vfs_save_close(void* user) {
     return 0;
 }
 
+/**
+ * @brief 打开存档虚拟文件系统目录
+ * 
+ * 此函数用于打开存档VFS中的目录，支持多种不同类型的存档目录结构。
+ * 根据路径类型执行不同的初始化操作，为后续的目录读取操作做准备。
+ * 
+ * @param user VfsSaveDir结构体指针，用于存储目录状态信息
+ * @param path 要打开的目录路径（如 "save:", "save:/files", "save:/zips" 等）
+ * @return int 成功返回0，失败返回-1
+ * 
+ * 支持的目录类型：
+ * - SaveDirType_Root: 根目录，显示所有用户账户
+ * - SaveDirType_User1: 用户级目录，显示files和zips子目录
+ * - SaveDirType_File: 文件模式，显示存档文件列表
+ * - SaveDirType_Zip: ZIP模式，显示存档ZIP文件列表
+ * - SaveDirType_FileApp: 应用存档文件系统，直接访问存档内容
+ */
 static int vfs_save_opendir(void* user, const char* path) {
     struct VfsSaveDir* f = user;
-    f->data = get_type(path);
+    f->data = get_type(path);  // 解析路径类型和相关数据
 
     switch (f->data.type) {
-        default: return -1;
+        default: return -1;  // 不支持的目录类型
 
         case SaveDirType_Root:
+            // 根目录：重新扫描用户账户列表
             rescan_users();
             break;
 
         case SaveDirType_User1:
+            // 用户级目录：无需特殊初始化，直接显示固定的子目录
             break;
 
         case SaveDirType_File:
         case SaveDirType_Zip: {
+            // 文件/ZIP模式：设置存档数据过滤器，用于读取存档信息
             FsSaveDataFilter filter = {0};
             filter.filter_by_save_data_type = true;
             filter.attr.save_data_type = f->data.data_type;
 
+            // 如果是账户类型的存档，添加用户ID过滤
             if (f->data.data_type == FsSaveDataType_Account) {
                 filter.filter_by_user_id = true;
                 filter.attr.uid = f->data.uid;
             }
 
             Result rc;
+            // 打开存档信息读取器，用于枚举符合条件的存档
             if (R_FAILED(rc = fsOpenSaveDataInfoReaderWithFilter(&f->r, f->data.space_id, &filter))) {
                 log_file_fwrite("failed: fsOpenSaveDataInfoReaderWithFilter() 0x%X\n", rc);
                 return -1;
@@ -788,12 +931,14 @@ static int vfs_save_opendir(void* user, const char* path) {
         }   break;
 
         case SaveDirType_FileApp: {
+            // 应用存档文件系统：挂载特定的存档文件系统
             FsFileSystem* fs = mount_save_fs(&f->data);
             if (!fs) {
                 return -1;
             }
             f->fs = *fs;
 
+            // 构建原生路径并打开存档内的目录
             char nxpath[FS_MAX_PATH] = {"/"};
             build_native_path(nxpath, path, &f->data);
             if (vfs_fs_internal_opendir(&f->fs, &f->fs_dir, nxpath)) {
@@ -803,27 +948,47 @@ static int vfs_save_opendir(void* user, const char* path) {
         }   break;
     }
 
-    f->index = 0;
-    f->is_valid = 1;
+    f->index = 0;      // 重置读取索引
+    f->is_valid = 1;   // 标记目录为有效状态
     return 0;
 }
 
+/**
+ * @brief 读取存档虚拟文件系统目录条目
+ * 
+ * 此函数用于从已打开的存档VFS目录中读取下一个目录条目。
+ * 根据不同的目录类型，返回相应的条目信息（用户账户、存档文件、应用程序等）。
+ * 
+ * @param user VfsSaveDir结构体指针，包含目录状态信息
+ * @param user_entry VfsSaveDirEntry结构体指针，用于存储读取到的目录条目信息
+ * @return const char* 成功时返回条目名称，到达目录末尾或失败时返回NULL
+ * 
+ * 不同目录类型的处理：
+ * - SaveDirType_Root: 返回用户账户信息，格式为"昵称 [UID]"
+ * - SaveDirType_User1: 返回固定的子目录名称（"files", "zips"）
+ * - SaveDirType_File/Zip: 返回存档应用程序信息，显示应用名称或ID
+ * - SaveDirType_FileApp: 返回存档文件系统内的实际文件/目录条目
+ */
 static const char* vfs_save_readdir(void* user, void* user_entry) {
     struct VfsSaveDir* f = user;
     struct VfsSaveDirEntry* entry = user_entry;
 
     Result rc;
     switch (f->data.type) {
-        default: return NULL;
+        default: return NULL;  // 不支持的目录类型
 
         case SaveDirType_Root: {
+            // 根目录：返回用户账户信息
             if (f->index >= g_acc_count) {
-                return NULL;
+                return NULL;  // 已读取完所有账户
             }
             const struct SaveAcc* p = &g_acc_profile[f->index];
+            // 根据UID有效性决定显示格式
             if (!accountUidIsValid(&p->uid)) {
+                // 系统账户（如bcat、cache等），只显示名称
                 snprintf(entry->name, sizeof(entry->name), "%s", p->name);
             } else {
+                // 用户账户，显示"昵称 [UID]"
                 snprintf(entry->name, sizeof(entry->name), "%s [%016lX%016lX]", p->name, p->uid.uid[0], p->uid.uid[1]);
             }
             f->index++;
@@ -831,16 +996,19 @@ static const char* vfs_save_readdir(void* user, void* user_entry) {
         }
 
         case SaveDirType_User1: {
+            // 用户级目录：返回固定的子目录名称
             static const char* e[] = { "files","zips" };
             if (f->index >= sizeof(e)/sizeof(e[0])) {
-                return NULL;
+                return NULL;  // 只有两个固定子目录
             }
             return e[f->index++];
         }
 
         case SaveDirType_File:
         case SaveDirType_Zip: {
+            // 文件/ZIP模式：读取存档信息并显示应用程序名称
             s64 total;
+            // 从存档信息读取器中读取下一个存档条目
             if (R_FAILED(rc = fsSaveDataInfoReaderRead(&f->r, &entry->info, 1, &total))) {
                 log_file_fwrite("failed: fsSaveDataInfoReaderRead() 0x%X\n", rc);
                 return NULL;
@@ -848,19 +1016,26 @@ static const char* vfs_save_readdir(void* user, void* user_entry) {
 
             if (total <= 0) {
                 log_file_fwrite("fsSaveDataInfoReaderRead() no more entries %zd\n", total);
-                return NULL;
+                return NULL;  // 没有更多存档条目
             }
 
-            // this can fail if the game is no longer installed.
+            // 尝试获取应用程序名称（如果游戏已卸载可能会失败）
             NcmContentId id;
             struct AppName name;
             const char* ext = f->data.type == SaveDirType_File ? "" : ".zip";
+            
+            // 处理系统存档
             if (entry->info.save_data_type == FsSaveDataType_System || entry->info.save_data_type == FsSaveDataType_SystemBcat) {
                 snprintf(entry->name, sizeof(entry->name), "[%016lX]%s", entry->info.system_save_data_id, ext);
-            } else if (R_FAILED(rc = get_app_name(entry->info.application_id, &id, &name))) {
+            } 
+            // 尝试获取应用程序名称
+            else if (R_FAILED(rc = get_app_name(entry->info.application_id, &id, &name))) {
+                // 无法获取应用名称，使用应用程序ID
                 snprintf(entry->name, sizeof(entry->name), "[%016lX]%s", entry->info.application_id, ext);
             } else {
+                // 成功获取应用名称
                 if (f->data.type == SaveDirType_Zip) {
+                    // ZIP模式需要清理文件名中的无效字符
                     utilsReplaceIllegalCharacters(name.str, true);
                     make_zip_string_valid(name.str);
                 }
@@ -872,6 +1047,7 @@ static const char* vfs_save_readdir(void* user, void* user_entry) {
         }
 
         case SaveDirType_FileApp: {
+            // 应用存档文件系统：直接读取存档内的文件系统条目
             return vfs_fs_internal_readdir(&f->fs_dir, &entry->fs_buf);
         }
     }
