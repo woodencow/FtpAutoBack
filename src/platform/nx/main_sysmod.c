@@ -117,6 +117,8 @@ struct SaveFileInfo {
     int sequence;  // 序列号字段，用于带序列号的存档格式
 };
 
+
+
 // ========== 全局变量声明 ==========
 // 配置相关全局变量
 static const char* INI_PATH = "/config/ftpsrv/config.ini";
@@ -148,6 +150,8 @@ static struct {
 
 // maxback配置参数
 static int g_maxback = 0;
+
+
 
 // 系统相关全局变量
 extern u32 __nx_applet_type;
@@ -267,6 +271,33 @@ int main(void) {
     bool skip_ascii_convert = ini_getbool("Nx", "skip_ascii_convert", 0, INI_PATH);
     g_ftpsrv_config.port = ini_getl("Nx", "sys_port", g_ftpsrv_config.port, INI_PATH); // compat
 
+    // 读取自定义挂载点（仅在mount_devices为真时）
+    CustomMountPoint g_custom_mounts[10] = {0};  // 最多10个自定义挂载点
+    int g_custom_mount_count = 0;
+    if (mount_devices) {
+        for (int i = 1; i <= 10; i++) {
+            char name_key[14];
+            char path_key[14];
+            char temp_name[30] = {0};
+            char temp_path[64] = {0};
+            
+            // 构造键名
+            snprintf(name_key, sizeof(name_key), "custom_name%d", i);
+            snprintf(path_key, sizeof(path_key), "custom_path%d", i);
+            
+            // 读取显示名称和挂载路径
+            ini_gets("Custom Mount Point", name_key, "", temp_name, sizeof(temp_name), INI_PATH);
+            ini_gets("Custom Mount Point", path_key, "", temp_path, sizeof(temp_path), INI_PATH);
+            
+            // 如果两个值都不为空，则添加到数组中
+            if (strlen(temp_name) > 0 && strlen(temp_path) > 0) {
+                strncpy(g_custom_mounts[g_custom_mount_count].display_name, temp_name, sizeof(g_custom_mounts[g_custom_mount_count].display_name) - 1);
+                strncpy(g_custom_mounts[g_custom_mount_count].mount_path, temp_path, sizeof(g_custom_mounts[g_custom_mount_count].mount_path) - 1);
+                g_custom_mount_count++;
+            } else break;
+        }
+    }
+    
     // get Nx-Sys overrides
     g_ftpsrv_config.anon = ini_getbool("Nx-Sys", "anon", g_ftpsrv_config.anon, INI_PATH);
     user_len = ini_gets("Nx-Sys", "user", g_ftpsrv_config.user, g_ftpsrv_config.user, sizeof(g_ftpsrv_config.user), INI_PATH);
@@ -321,7 +352,7 @@ int main(void) {
         return EXIT_FAILURE;
     }
 
-    vfs_nx_init(NULL, mount_devices, save_writable, mount_bis, skip_ascii_convert);
+    vfs_nx_init(NULL, mount_devices, save_writable, mount_bis, skip_ascii_convert, g_custom_mounts);
 
     // 创建autoback文件夹
     FsFileSystem* sdmc_fs = fsdev_wrapGetDeviceFileSystem("sdmc");

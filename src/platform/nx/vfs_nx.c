@@ -610,7 +610,7 @@ static const struct MountEntry BIS_NAMES[] = {
  * - USB硬盘 (hdd) - 如果启用USBHSFS
  * - 用户自定义设备 - 如果提供了custom参数
  */
-void vfs_nx_init(const struct VfsNxCustomPath* custom, bool enable_devices, bool save_writable, bool mount_bis, bool skip_ascii_convert) {
+void vfs_nx_init(const struct VfsNxCustomPath* custom, bool enable_devices, bool save_writable, bool mount_bis, bool skip_ascii_convert, const CustomMountPoint* custom_mounts) {
     // 设置全局配置变量
     g_enabled_devices = enable_devices;
     g_skip_ascii_convert = skip_ascii_convert;
@@ -618,14 +618,14 @@ void vfs_nx_init(const struct VfsNxCustomPath* custom, bool enable_devices, bool
     // 如果启用设备挂载模式
     if (g_enabled_devices) {
         // 挂载SD卡
-        vfs_nx_add_device("1. SD卡", VFS_TYPE_FS);
+        vfs_nx_add_device("01. SD卡", VFS_TYPE_FS);
 
         // 挂载相册分区
         if (!fsdev_wrapMountImage("album_nand", FsImageDirectoryId_Nand)) {
-            vfs_nx_add_device("6. 相册（正版）", VFS_TYPE_FS);
+            vfs_nx_add_device("06. 相册(正版)", VFS_TYPE_FS);
         }
         if (!fsdev_wrapMountImage("album_sd", FsImageDirectoryId_Sd)) {
-            vfs_nx_add_device("5. 相册（虚拟）", VFS_TYPE_FS);
+            vfs_nx_add_device("05. 相册(虚拟)", VFS_TYPE_FS);
         }
 
 
@@ -684,13 +684,31 @@ void vfs_nx_init(const struct VfsNxCustomPath* custom, bool enable_devices, bool
         FsFileSystem* sdmc = fsdev_wrapGetDeviceFileSystem("sdmc");
         if (sdmc) {
             // Switch目录快捷方式
-            if (!fsdev_wrapMountDevice("3. 自制插件", "/switch", *sdmc, false)) {
-                vfs_nx_add_device("3. 自制插件", VFS_TYPE_FS);
+            if (!fsdev_wrapMountDevice("03. 自制插件", "/switch", *sdmc, false)) {
+                vfs_nx_add_device("03. 自制插件", VFS_TYPE_FS);
             }
             // Atmosphere内容目录快捷方式
-            if (!fsdev_wrapMountDevice("2. 金手指&MOD", "/atmosphere/contents", *sdmc, false)) {
-                vfs_nx_add_device("2. 金手指&MOD", VFS_TYPE_FS);
+            if (!fsdev_wrapMountDevice("02. 金手指&MOD", "/atmosphere/contents", *sdmc, false)) {
+                vfs_nx_add_device("02. 金手指&MOD", VFS_TYPE_FS);
             }
+
+            // 加载自定义挂载点
+            for (int i = 0; i < 10; i++) {
+                // 如果显示名称为空，说明没有更多的自定义挂载点了
+                if (custom_mounts[i].display_name[0] == '\0') {
+                    break;
+                }
+                
+                // 构建带编号的显示名称
+                char numbered_name[30];
+                snprintf(numbered_name, sizeof(numbered_name), "%02d. %s", 7 + i, custom_mounts[i].display_name);
+                
+                // 尝试挂载自定义路径
+                if (!fsdev_wrapMountDevice(numbered_name, custom_mounts[i].mount_path, *sdmc, false)) {
+                    vfs_nx_add_device(numbered_name, VFS_TYPE_FS);
+                }
+            }
+
         }
 
 /**     过于高级，直接注释掉不管
@@ -704,7 +722,7 @@ void vfs_nx_init(const struct VfsNxCustomPath* custom, bool enable_devices, bool
         // 初始化存档VFS（如果启用）
 #if USE_VFS_SAVE
         vfs_save_init(save_writable);
-        vfs_nx_add_device("4. 游戏存档", VFS_TYPE_SAVE);
+        vfs_nx_add_device("04. 游戏存档", VFS_TYPE_SAVE);
 #endif
 
 /**     过于高级了这个，看不懂直接注释掉
