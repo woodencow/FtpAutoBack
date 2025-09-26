@@ -373,12 +373,12 @@ ftp_set_compile_definitions(ftpsrv)
         )
 
         # 创建系统模块版本的FTP可执行文件
-        add_executable(sysftp
+        add_executable(sysFtpAutoBack
             src/platform/nx/main_sysmod.c  # 系统模块主程序入口
             ${NX_SRC}                      # Switch平台源文件
         )
         # 设置编译选项
-        target_compile_options(sysftp PRIVATE ${gcc_warning_flags})
+        target_compile_options(sysFtpAutoBack PRIVATE ${gcc_warning_flags})
         
         # 查找系统模块所需的外部库
         find_library(CURL_LIB curl)    # libcurl网络库
@@ -386,16 +386,16 @@ ftp_set_compile_definitions(ftpsrv)
         find_library(XML2_LIB xml2)    # libxml2 XML解析库
         
         # 链接所有必要的库到系统模块
-        target_link_libraries(sysftp PRIVATE ftpsrv_sysmod minIni ${CURL_LIB} ${ZLIB_LIB} ${XML2_LIB})
+        target_link_libraries(sysFtpAutoBack PRIVATE ftpsrv_sysmod minIni ${CURL_LIB} ${ZLIB_LIB} ${XML2_LIB})
         
         # 添加DevkitPro工具链的包含目录
-        target_include_directories(sysftp PRIVATE 
+        target_include_directories(sysFtpAutoBack PRIVATE 
             $ENV{DEVKITPRO}/portlibs/switch/include         # Switch移植库头文件
             $ENV{DEVKITPRO}/portlibs/switch/include/libxml2 # libxml2头文件
         )
         
-        # 配置sysftp可执行文件
-        ftp_add(sysftp)
+        # 配置sysFtpAutoBack可执行文件
+        ftp_add(sysFtpAutoBack)
 
         # 为系统模块版本设置VFS功能的编译定义
         target_compile_definitions(ftpsrv_sysmod PUBLIC
@@ -409,11 +409,11 @@ ftp_set_compile_definitions(ftpsrv)
         file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/420000000000011B/flags) # 标志文件目录
 
         # 配置系统模块的JSON配置文件
-        configure_file(${CMAKE_CURRENT_SOURCE_DIR}/src/platform/nx/sysftp.json ${CMAKE_CURRENT_BINARY_DIR}/sysftp.json)
+        configure_file(${CMAKE_CURRENT_SOURCE_DIR}/src/platform/nx/sysFtpAutoBack.json ${CMAKE_CURRENT_BINARY_DIR}/sysFtpAutoBack.json)
 
         # 添加构建后命令：复制配置文件和创建启动标志
         add_custom_command(
-            TARGET sysftp POST_BUILD
+            TARGET sysFtpAutoBack POST_BUILD
             # 复制工具箱配置文件
             COMMAND ${CMAKE_COMMAND} -E copy
                 ${CMAKE_CURRENT_SOURCE_DIR}/src/platform/nx/toolbox.json
@@ -425,8 +425,8 @@ ftp_set_compile_definitions(ftpsrv)
         )
 
         # 创建系统模块的ExeFS NSP文件
-        nx_create_exefs(sysftp
+        nx_create_exefs(sysFtpAutoBack
             OUTPUT 420000000000011B/exefs.nsp           # 输出ExeFS文件
-            CONFIG ${CMAKE_CURRENT_BINARY_DIR}/sysftp.json  # 使用配置文件
+            CONFIG ${CMAKE_CURRENT_BINARY_DIR}/sysFtpAutoBack.json  # 使用配置文件
         )
     endif()
