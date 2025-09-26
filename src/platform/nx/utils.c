@@ -2,6 +2,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <errno.h>
+#include "vfs/device_mapping.h"
 
 #define FsDevWrap_Module 0x505
 
@@ -129,6 +130,30 @@ int fsdev_wrapTranslatePath(const char *path, FsFileSystem** device, char *outpa
         errno = ENODEV;
         return -1;
     }
+
+    // 提取设备名称并转换为系统名称
+    char device_name[24];
+    size_t device_name_len = colon - nxpath;
+    if (device_name_len >= sizeof(device_name)) {
+        errno = ENAMETOOLONG;
+        return -1;
+    }
+    strncpy(device_name, nxpath, device_name_len);
+    device_name[device_name_len] = '\0';
+    const char* system_name = get_system_name(device_name);
+
+    // 保存路径后半部分（冒号之后的内容）
+    const char* path_suffix = colon + 1;
+    
+    // 构建新的路径（复用nxpath缓冲区）
+    int ret = snprintf(nxpath, sizeof(nxpath), "%s:%s", system_name, path_suffix);
+    if (ret <= 0 || ret >= sizeof(nxpath)) {
+        errno = ENAMETOOLONG;
+        return -1;
+    }
+    
+    // 更新colon指针指向新路径中的冒号位置
+    colon = strchr(nxpath, ':');
 
     struct FsDevWrapEntry* entry = find_entry(nxpath);
     if (!entry) {

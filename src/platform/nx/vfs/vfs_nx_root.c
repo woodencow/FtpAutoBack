@@ -4,6 +4,7 @@
  */
 
 #include "ftpsrv_vfs.h"
+#include "device_mapping.h"
 #include <errno.h>
 #include <string.h>
 #include <stdio.h>
@@ -45,7 +46,7 @@ static int vfs_root_opendir(void* user, const char* path) {
 static const char* vfs_root_readdir(void* user, void* user_entry) {
     struct VfsRootDir* f = user;
     if (f->index < *g_count) {
-        return g_entries[f->index++].name;
+        return get_user_friendly_name(g_entries[f->index++].name);
     } else {
         return NULL;
     }
