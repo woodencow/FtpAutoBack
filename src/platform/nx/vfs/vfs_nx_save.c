@@ -1033,10 +1033,10 @@ static const char* vfs_save_readdir(void* user, void* user_entry) {
                 // 无法获取应用名称，使用应用程序ID
                 snprintf(entry->name, sizeof(entry->name), "[%016lX]%s", entry->info.application_id, ext);
             } else {
-                // 成功获取应用名称
+                // 成功获取应用名称，清理文件名中的无效字符
+                utilsReplaceIllegalCharacters(name.str, true);
                 if (f->data.type == SaveDirType_Zip) {
-                    // ZIP模式需要清理文件名中的无效字符
-                    utilsReplaceIllegalCharacters(name.str, true);
+                    // ZIP模式需要额外的字符串有效化处理
                     make_zip_string_valid(name.str);
                 }
                 snprintf(entry->name, sizeof(entry->name), "%s [%016lX]%s", name.str, entry->info.application_id, ext);

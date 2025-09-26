@@ -328,23 +328,28 @@ const char* ftp_vfs_getgrgid(const struct stat* st) {
 }
 
 // 语言代码到NACP语言索引的映射表
-static const u32 g_nacpLanguageTable[15] = {
-    [SetLanguage_JA]    = 2,    // 日语
-    [SetLanguage_ENUS]  = 0,    // 美式英语
-    [SetLanguage_ENGB]  = 1,    // 英式英语
-    [SetLanguage_FR]    = 3,    // 法语
-    [SetLanguage_DE]    = 4,    // 德语
-    [SetLanguage_ES419] = 5,    // 拉丁美洲西班牙语
-    [SetLanguage_ES]    = 6,    // 西班牙语
-    [SetLanguage_IT]    = 7,    // 意大利语
-    [SetLanguage_NL]    = 8,    // 荷兰语
-    [SetLanguage_FRCA]  = 9,    // 加拿大法语
-    [SetLanguage_PT]    = 10,   // 葡萄牙语
-    [SetLanguage_RU]    = 11,   // 俄语
-    [SetLanguage_KO]    = 12,   // 韩语
-    [SetLanguage_ZHTW]  = 13,   // 繁体中文
-    [SetLanguage_ZHCN]  = 14,   // 简体中文
+
+static const u32 g_nacpLanguageTable[18] = {
+    [0]  = 2,    // 日语 (SetLanguage_JA)
+    [1]  = 0,    // 美式英语 (SetLanguage_ENUS)
+    [2]  = 3,    // 法语 (SetLanguage_FR)
+    [3]  = 4,    // 德语 (SetLanguage_DE)
+    [4]  = 7,    // 意大利语 (SetLanguage_IT)
+    [5]  = 6,    // 西班牙语 (SetLanguage_ES)
+    [6]  = 14,   // 简体中文 (SetLanguage_ZHCN)
+    [7]  = 12,   // 韩语 (SetLanguage_KO)
+    [8]  = 8,    // 荷兰语 (SetLanguage_NL)
+    [9]  = 15,   // 葡萄牙语 (SetLanguage_PT)
+    [10] = 11,   // 俄语 (SetLanguage_RU)
+    [11] = 13,   // 繁体中文 (SetLanguage_ZHTW)
+    [12] = 1,    // 英式英语 (SetLanguage_ENGB)
+    [13] = 9,    // 加拿大法语 (SetLanguage_FRCA)
+    [14] = 5,    // 拉丁美洲西班牙语 (SetLanguage_ES419)
+    [15] = 14,   // 简体中文 (新)
+    [16] = 13,   // 繁体中文 (新)
+    [17] = 15,   // 巴西葡萄牙语 (新)
 };
+
 
 static u8 g_lang_index;  // 当前语言索引
 
@@ -487,11 +492,6 @@ void utilsReplaceIllegalCharacters(char *str, bool ascii_only)
     // 文件系统中的非法字符列表
     static const char g_illegalFileSystemChars[] = "\\/:*?\"<>|";
 
-    // 如果设置了跳过ASCII转换标志，则直接返回
-    if (g_skip_ascii_convert) {
-        return;
-    }
-
     size_t str_size = 0, cur_pos = 0;
 
     // 检查输入参数有效性
@@ -510,11 +510,22 @@ void utilsReplaceIllegalCharacters(char *str, bool ascii_only)
         if (units < 0) break;  // 解码失败，停止处理
 
         // 判断字符是否需要替换
-        if (code < 0x20 ||                                                          // 控制字符（0x00-0x1F）
-            (!ascii_only && code == 0x7F) ||                                       // DEL字符（仅在非ASCII模式下）
-            (ascii_only && code >= 0x7F) ||                                        // 非ASCII字符（仅在ASCII模式下）
-            (units == 1 && memchr(g_illegalFileSystemChars, (int)code, sizeof(g_illegalFileSystemChars))))  // 文件系统非法字符
-        {
+        bool should_replace = false;
+        
+        // 始终替换文件系统非法字符，不受g_skip_ascii_convert影响
+        if (units == 1 && memchr(g_illegalFileSystemChars, (int)code, sizeof(g_illegalFileSystemChars))) {
+            should_replace = true;
+        }
+        // 如果没有设置跳过ASCII转换标志，则进行其他字符处理
+        else if (!g_skip_ascii_convert) {
+            if (code < 0x20 ||                                      // 控制字符（0x00-0x1F）
+                (!ascii_only && code == 0x7F) ||                   // DEL字符（仅在非ASCII模式下）
+                (ascii_only && code >= 0x7F)) {                    // 非ASCII字符（仅在ASCII模式下）
+                should_replace = true;
+            }
+        }
+        
+        if (should_replace) {
             // 需要替换的字符：用下划线替换，但避免连续的下划线
             if (!repl)
             {
@@ -723,7 +734,7 @@ void vfs_nx_init(const struct VfsNxCustomPath* custom, bool enable_devices, bool
         if (R_SUCCEEDED(setGetSystemLanguage(&LanguageCode))) {
             if (R_SUCCEEDED(setMakeLanguage(LanguageCode, &Language))) {
                 // 验证语言代码有效性
-                if (Language < 0 || Language >= 15) {
+                if (Language < 0 || Language >= 18) {
                     Language = SetLanguage_ENUS;  // 无效时回退到英语
                 }
             }
