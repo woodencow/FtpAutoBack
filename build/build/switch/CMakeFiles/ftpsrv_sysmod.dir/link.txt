@@ -1,2 +1,0 @@
-"/opt/devkitpro/devkitA64/bin/aarch64-none-elf-gcc-ar.exe" qc libftpsrv_sysmod.a CMakeFiles/ftpsrv_sysmod.dir/src/ftpsrv.o
-"/opt/devkitpro/devkitA64/bin/aarch64-none-elf-gcc-ranlib.exe" libftpsrv_sysmod.a
