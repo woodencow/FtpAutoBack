@@ -406,7 +406,7 @@ int main(void) {
     static char ftp_thread_stack[16 * 1024] __attribute__((aligned(0x1000)));
     static char auto_backup_thread_stack[64 * 1024] __attribute__((aligned(0x1000)));  // 优化: 128KB -> 64KB
     
-    // 根据sysftp.json配置，线程优先级必须在24-63范围内，使用与主线程相同的优先级49
+    // 根据sysFtpAutoBack.json配置，线程优先级必须在24-63范围内，使用与主线程相同的优先级49
     Result ftp_thread_rc = threadCreate(&ftp_service_thread, ftp_thread, NULL, ftp_thread_stack, 16 * 1024, 49, 3);
     if (R_SUCCEEDED(ftp_thread_rc)) {
         log_file_write("FTP thread created successfully, starting thread...");

@@ -1,5 +1,5 @@
 {
-	"name":	"sys-ftp",
+	"name":	"sysFtpAutoBack",
 	"version":	"${FTPSRV_VERSION}",
 	"program_id": "0x420000000000011B",
 	"program_id_range_min": "0x420000000000011B",
