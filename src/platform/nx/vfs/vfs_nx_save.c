@@ -16,6 +16,7 @@
 #include "vfs_nx_save.h"
 #include "../utils.h"
 #include "log/log.h"
+#include "device_mapping.h"  // 设备名称映射支持
 #include <errno.h>
 #include <string.h>
 #include <stdio.h>
@@ -667,72 +668,126 @@ static void unmount_save_fs(const struct SavePathData* d) {
     }
 }
 
+/**
+ * 解析存档路径并返回对应的存档数据信息
+ * @param path 存档路径字符串
+ * @return 解析后的存档路径数据结构
+ */
 static struct SavePathData get_type(const char* path) {
-    struct SavePathData data = {0};
-    if (!strcmp(path, "save:")) {
-        data.type = SaveDirType_Root;
+    struct SavePathData data = {0};  // 初始化存档路径数据结构
+    
+    // 进行反向映射：将用户友好的设备名称转换为系统内部名称
+    const char* mapped_path = path;
+    char mapped_buffer[FS_MAX_PATH];
+    
+    // 查找路径中的冒号分隔符，直接转换为 save: 系统路径
+    const char* colon_pos = strchr(path, ':');
+    if (colon_pos != NULL) {
+        // 获取剩余路径（跳过冒号）
+        const char* remaining_path = colon_pos + 1;
+        
+        // 直接构建 save: 系统路径
+        snprintf(mapped_buffer, sizeof(mapped_buffer), "save:%s", remaining_path);
+        mapped_path = mapped_buffer;
+    }
+    
+    // 检查是否为存档根目录
+    if (!strcmp(mapped_path, "save:")) {
+        data.type = SaveDirType_Root;  // 设置为根目录类型
     } else {
-        const char* dilem = strchr(path, '[');
-        data.space_id = FsSaveDataSpaceId_User;
-        if (!strncmp(path, "save:/bcat", strlen("save:/bcat"))) {
+        // 查找路径中的分隔符 '[' 用于解析用户ID和应用ID
+        const char* dilem = strchr(mapped_path, '[');
+        data.space_id = FsSaveDataSpaceId_User;  // 默认设置为用户存储空间
+        
+        // 解析不同类型的存档路径
+        if (!strncmp(mapped_path, "save:/bcat", strlen("save:/bcat"))) {
+            // BCAT存档类型 - 用于游戏数据分发
             data.data_type = FsSaveDataType_Bcat;
             data.space_id = FsSaveDataSpaceId_User;
             data.type = SaveDirType_User1;
-        } else if (!strncmp(path, "save:/cache", strlen("save:/cache"))) {
+        } else if (!strncmp(mapped_path, "save:/cache", strlen("save:/cache"))) {
+            // 缓存存档类型 - 存储在SD卡上的缓存数据
             data.data_type = FsSaveDataType_Cache;
-            data.space_id = FsSaveDataSpaceId_SdUser;
+            data.space_id = FsSaveDataSpaceId_SdUser;  // SD卡用户空间
             data.type = SaveDirType_User1;
-        } else if (!strncmp(path, "save:/device", strlen("save:/device"))) {
+        } else if (!strncmp(mapped_path, "save:/device", strlen("save:/device"))) {
+            // 设备存档类型 - 设备特定的存档数据
             data.data_type = FsSaveDataType_Device;
             data.space_id = FsSaveDataSpaceId_User;
             data.type = SaveDirType_User1;
-        } else if (!strncmp(path, "save:/system", strlen("save:/system"))) {
+        } else if (!strncmp(mapped_path, "save:/system", strlen("save:/system"))) {
+            // 系统存档类型 - 系统级别的存档数据
             data.data_type = FsSaveDataType_System;
-            data.space_id = FsSaveDataSpaceId_System;
+            data.space_id = FsSaveDataSpaceId_System;  // 系统存储空间
             data.type = SaveDirType_User1;
         } else if (dilem && strlen(dilem) >= 33) {
-            dilem++;
-            char uid_buf[2][17];
+            // 解析用户账户存档路径，格式: save:/[用户ID32位十六进制][应用ID16位十六进制]
+            dilem++;  // 跳过 '[' 字符
+            char uid_buf[2][17];  // 用于存储用户ID的两个部分（每部分16字符）
+            
+            // 分割32位用户ID为两个16位部分
             snprintf(uid_buf[0], sizeof(uid_buf[0]), "%s", dilem);
             snprintf(uid_buf[1], sizeof(uid_buf[1]), "%s", dilem + 0x10);
 
+            // 将十六进制字符串转换为64位整数
             data.uid.uid[0] = strtoull(uid_buf[0], NULL, 0x10);
             data.uid.uid[1] = strtoull(uid_buf[1], NULL, 0x10);
 
+            // 设置为账户存档类型
             data.data_type = FsSaveDataType_Account;
             data.space_id = FsSaveDataSpaceId_User;
             data.type = SaveDirType_User1;
+            
+            // 查找下一个 '[' 字符，用于解析应用ID
             dilem = strchr(dilem, '[');
         }
 
+        // 进一步解析存档子目录类型
         if (data.type == SaveDirType_User1) {
-            if (strstr(path, "/zips")) {
+            if (strstr(mapped_path, "/zips")) {
+                // ZIP压缩存档目录
                 data.type = SaveDirType_Zip;
-            } else if (strstr(path, "/files")) {
+            } else if (strstr(mapped_path, "/files")) {
+                // 文件存档目录
                 data.type = SaveDirType_File;
             }
 
+            // 如果是文件或ZIP类型，进一步解析应用ID
             if (data.type == SaveDirType_File || data.type == SaveDirType_Zip) {
-                // will need to correctly handle this, its good enough for now.
+                // 需要正确处理这部分逻辑，目前的实现已经足够使用
                 if (dilem && strlen(dilem) >= 17) {
-                    dilem++;
+                    dilem++;  // 跳过 '[' 字符
+                    // 解析16位十六进制应用ID
                     data.app_id = strtoull(dilem, NULL, 0x10);
+                    // 根据原类型设置对应的应用存档类型
                     data.type = data.type == SaveDirType_File ? SaveDirType_FileApp : SaveDirType_ZipApp;
-                    dilem += 17;
-                    data.path_off = dilem - path;
+                    dilem += 17;  // 跳过应用ID和结束的 ']'
+                    // 计算原始路径中的偏移量
+                    // 由于我们总是进行映射，需要找到原始路径中对应的位置
+                    const char* colon_in_original = strchr(path, ':');
+                    if (colon_in_original) {
+                        // 计算映射路径中 ']' 后的偏移量
+                        size_t mapped_offset = dilem - mapped_path;
+                        // 减去 "save:" 的长度，加上原始路径冒号后的位置
+                        data.path_off = (colon_in_original + 1 - path) + (mapped_offset - 5);  // 5 = strlen("save:")
+                    } else {
+                        data.path_off = dilem - mapped_path;
+                    }
                 }
             }
         }
     }
 
-    return data;
+    return data;  // 返回解析后的存档路径数据
 }
 
 static void build_native_path(char out[FS_MAX_PATH], const char* path, const struct SavePathData* data) {
-    if (strlen(path + data->path_off)) {
-        snprintf(out, FS_MAX_PATH, "%s", path + data->path_off);
-    } else {
+    const char* relative_path = path + data->path_off;
+    // 如果相对路径为空或者只是一个结束符，返回根目录
+    if (!relative_path || !*relative_path || strlen(relative_path) == 0) {
         strcpy(out, "/");
+    } else {
+        snprintf(out, FS_MAX_PATH, "%s", relative_path);
     }
 }
 

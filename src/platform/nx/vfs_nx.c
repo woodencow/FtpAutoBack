@@ -556,25 +556,27 @@ bool vfs_get_skip_ascii_convert(void)
     return g_skip_ascii_convert;
 }
 
-/**
+/**  过于高级注释掉了
  * BIS分区挂载条目结构体
  * 用于定义BIS分区的名称和对应的分区ID
- */
+ 
 struct MountEntry {
     const char* name;           // 分区名称
     FsBisPartitionId id;        // 分区ID
 };
+*/
 
-/**
+/**   过于高级注释掉了
  * BIS分区挂载表
  * 定义了可挂载的BIS分区列表
- */
+ 
 static const struct MountEntry BIS_NAMES[] = {
     { "bis_calibration_file", FsBisPartitionId_CalibrationFile },  // 校准文件分区
     { "bis_safe_mode", FsBisPartitionId_SafeMode },                // 安全模式分区
     { "bis_user", FsBisPartitionId_User },                         // 用户分区
     { "bis_system", FsBisPartitionId_System },                     // 系统分区
 };
+*/
 
 /**
  * 初始化Nintendo Switch虚拟文件系统
@@ -616,24 +618,25 @@ void vfs_nx_init(const struct VfsNxCustomPath* custom, bool enable_devices, bool
     // 如果启用设备挂载模式
     if (g_enabled_devices) {
         // 挂载SD卡
-        vfs_nx_add_device("sdmc", VFS_TYPE_FS);
+        vfs_nx_add_device("1. SD卡", VFS_TYPE_FS);
 
         // 挂载相册分区
         if (!fsdev_wrapMountImage("album_nand", FsImageDirectoryId_Nand)) {
-            vfs_nx_add_device("album_nand", VFS_TYPE_FS);
+            vfs_nx_add_device("6. 相册（正版）", VFS_TYPE_FS);
         }
         if (!fsdev_wrapMountImage("album_sd", FsImageDirectoryId_Sd)) {
-            vfs_nx_add_device("album_sd", VFS_TYPE_FS);
+            vfs_nx_add_device("5. 相册（虚拟）", VFS_TYPE_FS);
         }
 
-        // 挂载BIS存储（如果启用存储VFS）
-#if USE_VFS_STORAGE
-        vfs_storage_init();
-        vfs_nx_add_device("bis", VFS_TYPE_STORAGE);
-#endif
 
+/**      过于高级，直接注释掉不管
         // 挂载BIS文件系统分区（如果启用BIS挂载）
         if (mount_bis) {
+            // 挂载BIS存储（如果启用存储VFS）
+#if USE_VFS_STORAGE
+            vfs_storage_init();
+            vfs_nx_add_device("bis", VFS_TYPE_STORAGE);
+#endif
             for (int i = 0; i < ARRAY_SIZE(BIS_NAMES); i++) {
                 if (!fsdev_wrapMountBis(BIS_NAMES[i].name, BIS_NAMES[i].id)) {
                     vfs_nx_add_device(BIS_NAMES[i].name, VFS_TYPE_FS);
@@ -675,34 +678,37 @@ void vfs_nx_init(const struct VfsNxCustomPath* custom, bool enable_devices, bool
             fsdev_wrapMountDevice("custom_sd", NULL, fs, true);
             vfs_nx_add_device("custom_sd", VFS_TYPE_FS);
         }
+*/
 
         // 添加一些快捷方式目录
         FsFileSystem* sdmc = fsdev_wrapGetDeviceFileSystem("sdmc");
         if (sdmc) {
             // Switch目录快捷方式
-            if (!fsdev_wrapMountDevice("switch", "/switch", *sdmc, false)) {
-                vfs_nx_add_device("switch", VFS_TYPE_FS);
+            if (!fsdev_wrapMountDevice("3. 自制插件", "/switch", *sdmc, false)) {
+                vfs_nx_add_device("3. 自制插件", VFS_TYPE_FS);
             }
             // Atmosphere内容目录快捷方式
-            if (!fsdev_wrapMountDevice("atmosphere_contents", "/atmosphere/contents", *sdmc, false)) {
-                vfs_nx_add_device("atmosphere_contents", VFS_TYPE_FS);
+            if (!fsdev_wrapMountDevice("2. 金手指&MOD", "/atmosphere/contents", *sdmc, false)) {
+                vfs_nx_add_device("2. 金手指&MOD", VFS_TYPE_FS);
             }
         }
 
+/**     过于高级，直接注释掉不管
         // 初始化游戏卡VFS（如果启用）
 #if USE_VFS_GC
         if (R_SUCCEEDED(vfs_gc_init())) {
             vfs_nx_add_device("gc", VFS_TYPE_GC);
         }
 #endif
-
+*/
         // 初始化存档VFS（如果启用）
 #if USE_VFS_SAVE
         vfs_save_init(save_writable);
-        vfs_nx_add_device("save", VFS_TYPE_SAVE);
+        vfs_nx_add_device("4. 游戏存档", VFS_TYPE_SAVE);
 #endif
 
-        // 初始化USBHSFS相关功能（如果启用）
+/**     过于高级了这个，看不懂直接注释掉
+        // 初始化USBHSFS相关功能（如果启用）（没有启用）
 #if USE_VFS_USBHSFS
         // 挂载当前进程的ROM文件系统
         if (R_SUCCEEDED(romfsMountFromCurrentProcess("romfs"))) {
@@ -719,6 +725,7 @@ void vfs_nx_init(const struct VfsNxCustomPath* custom, bool enable_devices, bool
             vfs_nx_add_device("hdd", VFS_TYPE_HDD);
         }
 #endif
+*/
         // 添加用户自定义设备（如果提供）
         if (custom) {
             vfs_nx_add_device(custom->name, VFS_TYPE_USER);
@@ -763,6 +770,8 @@ void vfs_nx_init(const struct VfsNxCustomPath* custom, bool enable_devices, bool
 void vfs_nx_exit(void) {
     // 只有在启用设备模式时才需要清理
     if (g_enabled_devices) {
+
+/**     过于高级了这个，看不懂直接注释掉
         // 退出游戏卡VFS（如果启用）
 #if USE_VFS_GC
         vfs_gc_exit();
@@ -771,19 +780,22 @@ void vfs_nx_exit(void) {
 #if USE_VFS_STORAGE
         vfs_storage_exit();
 #endif
+*/
         // 退出存档VFS（如果启用）
 #if USE_VFS_SAVE
         vfs_save_exit();
 #endif
         // 退出根目录VFS
         vfs_root_exit();
-        
+
+/**     过于高级了这个，看不懂直接注释掉
         // 清理USBHSFS相关资源（如果启用）
 #if USE_VFS_USBHSFS
         romfsUnmount("romfs_qlaunch");  // 卸载qlaunch ROM文件系统
         romfsUnmount("romfs");          // 卸载当前进程ROM文件系统
         vfs_hdd_exit();                 // 退出USB硬盘支持
 #endif
+*/
 
         // 关闭NCM服务
         for (int i = 0; i < NCM_SIZE; i++) {
