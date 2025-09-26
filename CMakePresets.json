@@ -7,25 +7,9 @@
     },
     "configurePresets": [
         {
-            "name": "core",
-            "displayName": "core",
-            "binaryDir": "${sourceDir}/build/${presetName}",
-            "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Release"
-            }
-        },
-        {
-            "name": "core-dev",
-            "displayName": "core-dev",
-            "binaryDir": "${sourceDir}/build/${presetName}",
-            "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Debug"
-            }
-        },
-        {
             "name": "switch",
             "displayName": "switch",
-            "inherits": [ "core" ],
+            "binaryDir": "${sourceDir}/build/${presetName}",
             "toolchainFile": "$env{DEVKITPRO}/cmake/Switch.cmake",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "MinSizeRel"
@@ -33,16 +17,6 @@
         }
     ],
     "buildPresets": [
-        {
-            "name": "core",
-            "configurePreset": "core",
-            "jobs": 16
-        },
-        {
-            "name": "core-dev",
-            "configurePreset": "core-dev",
-            "jobs": 16
-        },
         {
             "name": "switch",
             "configurePreset": "switch",

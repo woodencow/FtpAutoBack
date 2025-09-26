@@ -17,7 +17,7 @@ rm -rf out
 echo "打包自动备份程序中..."
 mkdir -p out/sys-autoback/config/ftpsrv
 mkdir -p out/sys-autoback/atmosphere/contents/
-cp assets/config.ini.template out/sys-autoback/config/ftpsrv/
+cp assets/config.template.ini out/sys-autoback/config/ftpsrv/
 cp -r build/switch/420000000000011B out/sys-autoback/atmosphere/contents/
 
 echo "- 自动备份程序打包成功！"

@@ -91,26 +91,7 @@ check_symbol_exists(SO_REUSEADDR
     HAVE_SO_REUSEADDR      # 检查套接字地址重用选项
 )
 
-# 检查系统函数是否可用
-check_c_source_compiles("
-    #include <sys/stat.h>
-    int main(void) { lstat(0, 0); }"
-HAVE_LSTAT)  # 检查lstat函数（获取符号链接状态）
-
-check_c_source_compiles("
-    #include <unistd.h>
-    int main(void) { readlink(0, 0, 0); }"
-HAVE_READLINK)  # 检查readlink函数（读取符号链接）
-
-check_c_source_compiles("
-    #include <pwd.h>
-    int main(void) { getpwuid(0); }"
-HAVE_GETPWUID)  # 检查getpwuid函数（根据UID获取用户信息）
-
-check_c_source_compiles("
-    #include <grp.h>
-    int main(void) { getgrgid(0); }"
-HAVE_GETGRGID)  # 检查getgrgid函数（根据GID获取组信息）
+# 检查系统函数是否可用（仅保留Switch需要的）
 
 check_c_source_compiles("
     #include <poll.h>
@@ -236,11 +217,8 @@ function(ftp_add name)
     endif()
 
     target_compile_options(${name} PRIVATE
-        $<$<OR:$<C_COMPILER_ID:Clang>,$<C_COMPILER_ID:AppleClang>,$<C_COMPILER_ID:GNU>>:
+        $<$<C_COMPILER_ID:GNU>:
             ${gcc_warning_flags}
-        >
-        $<$<C_COMPILER_ID:MSVC>:
-            /W4
         >
     )
 
@@ -252,32 +230,7 @@ target_include_directories(ftpsrv PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 ftp_add(ftpsrv)
 ftp_set_compile_definitions(ftpsrv)
 
-if (FTPSRV_LIB_BUILD)
-    if (FTPSRV_LIB_SOCK_UNISTD)
-        target_compile_definitions(ftpsrv PRIVATE FTP_SOCKET_HEADER="${CMAKE_CURRENT_SOURCE_DIR}/src/platform/unistd/socket_unistd.h")
-    endif()
-
-    if (FTPSRV_LIB_VFS_UNISTD)
-        target_sources(ftpsrv PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src/platform/unistd/vfs_unistd.c")
-        target_compile_definitions(ftpsrv PRIVATE FTP_VFS_HEADER="${CMAKE_CURRENT_SOURCE_DIR}/src/platform/unistd/vfs_unistd.h")
-    elseif (FTPSRV_LIB_VFS_STDIO)
-        target_sources(ftpsrv PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src/platform/stdio/vfs_stdio.c")
-        target_compile_definitions(ftpsrv PRIVATE FTP_VFS_HEADER="${CMAKE_CURRENT_SOURCE_DIR}/src/platform/stdio/vfs_stdio.h")
-    elseif(FTPSRV_LIB_VFS_CUSTOM)
-        target_compile_definitions(ftpsrv PUBLIC FTP_VFS_HEADER="${FTPSRV_LIB_VFS_CUSTOM}")
-    endif()
-
-    if (FTPSRV_LIB_CUSTOM_DEFINES)
-        target_compile_definitions(ftpsrv PUBLIC ${FTPSRV_LIB_CUSTOM_DEFINES})
-    endif()
-
-    ftp_set_options(ftpsrv
-        ${FTPSRV_LIB_PATH_SIZE}
-        ${FTPSRV_LIB_SESSIONS}
-        ${FTPSRV_LIB_BUF_SIZE}
-    )
-else()
-    # Nintendo Switch平台特定配置
+# Nintendo Switch平台特定配置
     if (NINTENDO_SWITCH)
         # 设置虚拟文件系统（VFS）选项的默认值
         if (NOT DEFINED USE_VFS_SAVE)
@@ -477,4 +430,3 @@ else()
             CONFIG ${CMAKE_CURRENT_BINARY_DIR}/sysftp.json  # 使用配置文件
         )
     endif()
-endif()
