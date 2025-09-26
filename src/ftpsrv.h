@@ -37,7 +37,7 @@ struct FtpSrvConfig {
     char user[128];
     char pass[128];
     unsigned port;
-
+    // sss
     // if set, anon access is allowed.
     bool anon;
     // if set, file uploads are not allowed.
