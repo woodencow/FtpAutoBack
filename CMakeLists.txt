@@ -2,9 +2,9 @@
 cmake_minimum_required(VERSION 3.13)
 
 # 定义项目版本号
-set(FTPSRV_VERSION_MAJOR 1)  # 主版本号
-set(FTPSRV_VERSION_MINOR 2)  # 次版本号
-set(FTPSRV_VERSION_PATCH 2)  # 补丁版本号
+set(FTPSRV_VERSION_MAJOR 0)  # 主版本号
+set(FTPSRV_VERSION_MINOR 19)  # 次版本号
+set(FTPSRV_VERSION_PATCH 0)  # 补丁版本号
 set(FTPSRV_VERSION ${FTPSRV_VERSION_MAJOR}.${FTPSRV_VERSION_MINOR}.${FTPSRV_VERSION_PATCH})
 
 # 设置GCC编译器警告标志
