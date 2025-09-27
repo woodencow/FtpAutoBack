@@ -11,9 +11,9 @@ typedef struct {
 
 // 设备名称映射表 - 内联定义
 static const DeviceNameMap g_device_name_maps[] = {
-    {"1. SD卡", "sdmc"},
-    {"5. 相册（虚拟）", "album_sd"},
-    {"6. 相册（正版）", "album_nand"},
+    {"01. SD卡", "sdmc"},
+    {"05. 相册(虚拟)", "album_sd"},
+    {"06. 相册(正版)", "album_nand"},
 };
 static const int g_device_name_map_count = sizeof(g_device_name_maps) / sizeof(DeviceNameMap);
 

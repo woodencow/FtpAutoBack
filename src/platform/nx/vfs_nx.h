@@ -131,6 +131,12 @@ struct AppName {
     char str[0x200];
 };
 
+// 自定义挂载点结构体
+typedef struct {
+    char display_name[30];  // 显示名称
+    char mount_path[64];    // 挂载路径
+} CustomMountPoint;
+
 typedef struct FtpVfs {
     // vfs_file
     int (*open)(void* user, const char* path, enum FtpVfsOpenMode mode);
@@ -163,7 +169,7 @@ struct VfsNxCustomPath {
     FtpVfs* func;
 };
 
-void vfs_nx_init(const struct VfsNxCustomPath* custom, bool enable_devices, bool save_writable, bool mount_bis, bool skip_ascii_convert);
+void vfs_nx_init(const struct VfsNxCustomPath* custom, bool enable_devices, bool save_writable, bool mount_bis, bool skip_ascii_convert, const CustomMountPoint* custom_mounts);
 void vfs_nx_exit(void);
 void vfs_nx_add_device(const char* name, enum VFS_TYPE type);
 
