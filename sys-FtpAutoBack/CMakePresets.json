@@ -1,0 +1,26 @@
+{
+    "version": 3,
+    "cmakeMinimumRequired": {
+        "major": 3,
+        "minor": 21,
+        "patch": 0
+    },
+    "configurePresets": [
+        {
+            "name": "switch",
+            "displayName": "switch",
+            "binaryDir": "${sourceDir}/build/${presetName}",
+            "toolchainFile": "$env{DEVKITPRO}/cmake/Switch.cmake",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "MinSizeRel"
+            }
+        }
+    ],
+    "buildPresets": [
+        {
+            "name": "switch",
+            "configurePreset": "switch",
+            "jobs": 16
+        }
+    ]
+}
