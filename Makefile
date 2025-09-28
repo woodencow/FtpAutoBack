@@ -20,8 +20,13 @@ sys:
 	@cd sys-FtpAutoBack && $(MAKE) -j
 	@echo "=== sys-FtpAutoBack 编译完成 ==="
 
+nro:
+	@echo "=== 开始编译 nro-FtpAutoBack ==="
+	@cd nro-FtpAutoBack && $(MAKE) -j
+	@echo "=== nro-FtpAutoBack 编译完成 ==="
+
 # 复制编译产物到统一输出目录（依赖于 ovl 和 sys 完成）
-copy-outputs: ovl sys
+copy-outputs: ovl sys nro
 	@echo "=== 正在执行复制编译产物到 out/ 目录 ==="
 	@rm -rf out/
 	@echo "=== 已清理旧的 out/ 目录 ==="
@@ -29,6 +34,8 @@ copy-outputs: ovl sys
 	@echo "=== 已创建新的 out/ovl-FtpAutoBack 目录 ==="
 	@mkdir -p out/sys-FtpAutoBack
 	@echo "=== 已创建新的 out/sys-FtpAutoBack 目录 ==="
+	@mkdir -p out/nro-FtpAutoBack
+	@echo "=== 已创建新的 out/nro-FtpAutoBack 目录 ==="
 	@if [ -f ovl-FtpAutoBack/FtpAutoBack.ovl ]; then \
 		cp ovl-FtpAutoBack/FtpAutoBack.ovl out/ovl-FtpAutoBack/; \
 		echo "=== 已复制 FtpAutoBack.ovl ==="; \
@@ -41,6 +48,12 @@ copy-outputs: ovl sys
 	else \
 		echo "*** 警告: 未找到 sys-FtpAutoBack 编译产物 ***"; \
 	fi
+	@if [ -f nro-FtpAutoBack/AUTOBackup-manager.nro ]; then \
+		cp nro-FtpAutoBack/AUTOBackup-manager.nro out/nro-FtpAutoBack/; \
+		echo "=== 已复制 AUTOBackup-manager.nro ==="; \
+	else \
+		echo "*** 警告: 未找到 AUTOBackup-manager.nro ***"; \
+	fi
 	@echo "=== 所有编译产物复制完成 ==="
 
 # 清理所有项目的编译产物
@@ -48,6 +61,7 @@ clean:
 	@echo "=== 正在执行清理所有编译产物 ==="
 	@cd ovl-FtpAutoBack && $(MAKE) clean 2>/dev/null || true
 	@cd sys-FtpAutoBack && $(MAKE) clean 2>/dev/null || true
+	@cd nro-FtpAutoBack && $(MAKE) clean 2>/dev/null || true
 	@rm -rf out/
 	@echo "=== 所有编译产物清理完成 ==="
 
