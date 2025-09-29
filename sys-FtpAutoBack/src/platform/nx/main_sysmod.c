@@ -269,7 +269,7 @@ int main(void) {
     bool save_writable = ini_getbool("Nx", "save_writable", 0, INI_PATH);
     g_led_enabled = ini_getbool("Nx", "led", 1, INI_PATH);
     bool skip_ascii_convert = ini_getbool("Nx", "skip_ascii_convert", 0, INI_PATH);
-    bool auto_backup_enabled = ini_getbool("Nx", "auto_backup", 0, INI_PATH);  // 读取自动备份配置
+    bool auto_backup_enabled = ini_getbool("Nx", "auto_backup", 1, INI_PATH);  // 读取自动备份配置
     g_ftpsrv_config.port = ini_getl("Nx", "sys_port", g_ftpsrv_config.port, INI_PATH); // compat
 
     // 读取自定义挂载点（仅在mount_devices为真时）
