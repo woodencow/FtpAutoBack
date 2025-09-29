@@ -1,0 +1,149 @@
+日志系统初始化完毕！
+虚拟文件系统初始化完毕！
+AutoBack文件夹已存在！
+用户文件夹已存在: /AutoBack/TOM
+共 1 个用户，成功创建 1 个，失败 0 个！
+CURL库初始化成功！
+WebDAV服务已启用。地址: https://dav.jianguoyun.com, 路径: dav, 用户: 1808461873@qq.com
+开始创建FTP服务线程...
+FTP服务线程创建成功,准备启动线程...
+开始创建自动备份线程...
+自动备份线程创建成功，准备启动线程...
+自动备份线程启动 - 确保用于 TID 监控的 BSD 套接字模式
+\�FDf٫�uabSuf����k[���*&成功强制初始化 BSD 套接字用于 TID 监控
+所有套接字状态已重置，TID 监控准备开始
+检测到当前运行的游戏 TID: 0100CD801CE5E000
+User running TID 0100CD801CE5E000 - UID: 1000000046132C957A7C45F596E94A94, Name: TOM
+SaveID for TID 0100CD801CE5E000 and user TOM: 0000000000000057
+SaveDataExtraData for TID 0100CD801CE5E000 - OwnerID: 0100CD801CE5E000, Timestamp: 1759153313, Flags: 0x00000000, DataSize: 167重置游戏 0100CD801CE5E000 的 CommitID 跟踪变量
+CommitID changed from 143A03AF14236D1E to 7E10C562ACEB77D2, change count: 1
+CommitID changed from 7E10C562ACEB77D2 to 7055C756EB573B1F, change count: 2
+CommitID changed from 7055C756EB573B1F to 41842EF13D0DCF20, change count: 3
+检测到当前运行的游戏 TID: 0100000000001000
+创建游戏 0100CD801CE5E000 的存档备份 - CommitID 变化次数: 3
+Successfully created ultrahand notification: 游戏 %016lX 的存档已变化，准备备份
+已开始为 TID: 0100CD801CE5E000 生成存档
+Failed to create ultrahand notification file: 0x402
+已为用户 TOM (1000000046132C957A7C45F596E94A94) 生成存档
+已成功挂载用户 TOM 的存档文件系统
+用户 TOM 的存档条目数量: 1
+已成功为用户 TOM 生成存档元数据
+[TIMESTAMP_EXTRACT] 开始提取时间戳: username=TOM, folder_name=Balatro
+[TIMESTAMP_EXTRACT] 搜索路径: /AutoBack/TOM/Balatro
+[TIMESTAMP_EXTRACT] 目录条目数: 1
+[TIMESTAMP_EXTRACT] 成功读取 1 目录条目
+[TIMESTAMP_EXTRACT] 开始单遍扫描: 查找最新时间戳和最大序列号
+[TIMESTAMP_EXTRACT] 处理文件: Balatro_TOM_0000.00.00@00.00.00_1.zip
+[PARSE_TIMESTAMP] 正在解析文件名: Balatro_TOM_0000.00.00@00.00.00_1.zip
+[PARSE_TIMESTAMP] 解码后的文件名: Balatro_TOM_0000.00.00@00.00.00_1.zip
+[PARSE_TIMESTAMP] 检测到序列号格式，序列号: 1
+[PARSE_TIMESTAMP] 序列号格式，提取的时间字符串: 0000.00.00@00.00.00
+[PARSE_TIMESTAMP] 序列号格式，转换后的时间格式: 0000:00:00 00:00:00
+[CUSTOM_STRPTIME] Starting to parse time string: 0000:00:00 00:00:00, format: %Y %m %d %H:%M:%S
+[CUSTOM_STRPTIME] Parsed successfully using colon-separated format
+[CUSTOM_STRPTIME] Detected all-zero timestamp, treating as oldest valid timestamp
+[CUSTOM_STRPTIME] All-zero timestamp processed: tm_year=0, tm_mon=0, tm_mday=1, tm_hour=0, tm_min=0, tm_sec=0
+[PARSE_TIMESTAMP] 序列号格式，成功解析时间戳: timestamp=-2209017600
+[PARSE_TIMESTAMP] Parsing completed, final timestamp: -2209017600, sequence: 1
+[TIMESTAMP_EXTRACT] 文件 Balatro_TOM_0000.00.00@00.00.00_1.zip 解析时间戳: -2209017600, 序列号: 1
+[TIMESTAMP_EXTRACT] 检测到全零时间戳字符串: 0000.00.00@00.00.00
+[TIMESTAMP_EXTRACT] 发现新最大时间戳: -2209017600, 序列号: 1
+[TIMESTAMP_EXTRACT] 有序列号格式, 时间: 0000.00.00@00.00.00
+[TIMESTAMP_EXTRACT] 检测到全零时间戳 (负数), 使用原始字符串: 0000.00.00@00.00.00
+[TIMESTAMP_EXTRACT] 检测到全零时间戳, 将使用下一个序列号
+[TIMESTAMP_EXTRACT] 提取完成: 最新时间戳=0000.00.00@00.00.00, 序列号=2
+[TIMESTAMP_EXTRACT] 函数执行结束
+已成功获取SD卡文件系统
+[PARSE_TIMESTAMP] 正在解析文件名: Balatro_TOM_0000.00.00@00.00.00_1.zip
+[PARSE_TIMESTAMP] 解码后的文件名: Balatro_TOM_0000.00.00@00.00.00_1.zip
+[PARSE_TIMESTAMP] 检测到序列号格式，序列号: 1
+[PARSE_TIMESTAMP] 序列号格式，提取的时间字符串: 0000.00.00@00.00.00
+[PARSE_TIMESTAMP] 序列号格式，转换后的时间格式: 0000:00:00 00:00:00
+[CUSTOM_STRPTIME] Starting to parse time string: 0000:00:00 00:00:00, format: %Y %m %d %H:%M:%S
+[CUSTOM_STRPTIME] Parsed successfully using colon-separated format
+[CUSTOM_STRPTIME] Detected all-zero timestamp, treating as oldest valid timestamp
+[CUSTOM_STRPTIME] All-zero timestamp processed: tm_year=0, tm_mon=0, tm_mday=1, tm_hour=0, tm_min=0, tm_sec=0
+[PARSE_TIMESTAMP] 序列号格式，成功解析时间戳: timestamp=-2209017600
+[PARSE_TIMESTAMP] Parsing completed, final timestamp: -2209017600, sequence: 1
+[BACKUP_MANAGE] Sorted[0]: Balatro_TOM_0000.00.00@00.00.00_1.zip (timestamp=-2209017600, sequence=1)
+已开始流式传输用户 TOM 的存档元数据到SD卡
+Starting streaming to /AutoBack/TOM/Balatro/Balatro_TOM_0000.00.00@00.00.00_2.zip
+Successfully created file /AutoBack/TOM/Balatro/Balatro_TOM_0000.00.00@00.00.00_2.zip
+Successfully opened file /AutoBack/TOM/Balatro/Balatro_TOM_0000.00.00@00.00.00_2.zip for writing
+Finished reading ZIP data, total bytes: 9551
+Successfully flushed file /AutoBack/TOM/Balatro/Balatro_TOM_0000.00.00@00.00.00_2.zip, total bytes written: 9551
+已成功创建用户 TOM 的存档元数据: /AutoBack/TOM/Balatro/Balatro_TOM_0000.00.00@00.00.00_2.zip
+Failed to create ultrahand notification file: 0x402
+已完成为TID 0100CD801CE5E000 和用户 TOM 生成存档元数据
+已连接网络 (IP: 192.168.50.176) 且 WebDAV 已启用，正在执行握手
+Begin WebDAV shakehand
+Preparing for WebDAV handshake - switching socket mode
+Switching to WebDAV mode...
+BSD sockets cleaned up
+Standard sockets initialized successfully
+Successfully switched to WebDAV mode
+WebDAV mode switch completed
+WebDAV URL: https://dav.jianguoyun.com/dav/
+curl initialization successful
+DNS resolution result: dav.jianguoyun.com -> 58.215.175.52
+DNS resolution result: dav.jianguoyun.com -> 58.215.175.52
+libcurl configuration completed
+WebDAV PROPFIND completed: status code=207
+Cleaning HTTP headers
+WebDAV handshake successful, starting streaming upload
+Processing WebDAV upload for user: TOM (1000000046132C957A7C45F596E94A94)
+Using game folder name: Balatro for TID 0100CD801CE5E000
+Successfully obtained SDMC filesystem in WebDAV mode
+Searching for local backup files in: /AutoBack/TOM/Balatro
+Attempting to open directory: /AutoBack/TOM/Balatro
+Successfully opened directory: /AutoBack/TOM/Balatro
+Directory contains 2 entries
+Successfully read 2 entries from directory
+Found entry: Balatro_TOM_0000.00.00@00.00.00_1.zip (type: 1)
+Found ZIP file: Balatro_TOM_0000.00.00@00.00.00_1.zip
+Attempting to open file: /AutoBack/TOM/Balatro/Balatro_TOM_0000.00.00@00.00.00_1.zip
+Successfully opened file: /AutoBack/TOM/Balatro/Balatro_TOM_0000.00.00@00.00.00_1.zip
+Found entry: Balatro_TOM_0000.00.00@00.00.00_2.zip (type: 1)
+Found ZIP file: Balatro_TOM_0000.00.00@00.00.00_2.zip
+Attempting to open file: /AutoBack/TOM/Balatro/Balatro_TOM_0000.00.00@00.00.00_2.zip
+Successfully opened file: /AutoBack/TOM/Balatro/Balatro_TOM_0000.00.00@00.00.00_2.zip
+Found local backup file: /AutoBack/TOM/Balatro/Balatro_TOM_0000.00.00@00.00.00_2.zip
+正在管理 WebDAV 存档数量，用户: TOM, 游戏: Balatro
+PROPFIND URL: https://dav.jianguoyun.com/dav/AutoBack/TOM/Balatro/
+WebDAV 存档管理成功: HTTP 409
+WebDAV PROPFIND failed for backup management: HTTP 409
+开始WebDAV上传, TID: 0100CD801CE5E000, 用户: TOM, 本地文件: /AutoBack/TOM/Balatro/Balatro_TOM_0000.00.00@00.00.00_2.zStarting NTP time synchronization...
+Network availability check passed
+Standard sockets already initialized
+Resolving NTP server address...
+NTP server address resolved successfully
+Attempting to create socket...
+Socket created successfully
+Socket options set successfully
+Sending NTP request...
+NTP request sent: 48 bytes
+Waiting for NTP response...
+NTP response received: 48 bytes
+NTP time retrieved: 2025-09-29 21:46:08
+WebDAV 上传URL: https://dav.jianguoyun.com/dav/AutoBack/TOM/Balatro/Balatro_TOM_2025.09.29%4021.46.08.zip
+本地ZIP文件打开成功, 大小: 9551 字节
+WebDAV 目录已存在或创建成功: AutoBack
+WebDAV 目录已存在或创建成功: AutoBack/TOM
+WebDAV 目录创建失败: Autoback/TOM/Balatro
+开始 WebDAV 上传流...
+WebDAV 上传失败: HTTP 409
+Successfully created ultrahand notification: WebDAV 上传失败
+WebDAV streaming upload failed: 0xffffffff
+WebDAV handshake and upload completed - switching back to FTP mode
+Switching to FTP mode...
+Standard sockets cleaned up
+BSD sockets initialized successfully
+Successfully switched to FTP mode
+FTP mode switch completed, ready for TID monitoring
+Socket verification successful, WebDAV handshake status reset
+Auto backup thread can resume TID monitoring
+Switched back to FTP mode
+WebDAV operation completed, ready to resume game TID monitoring
+WebDAV 握手失败，但本地备份已成功完成
+游戏 0100CD801CE5E000 的 TID 已变化，从 0100000000001000 到 0000000000000000
+重置游戏 0100000000001000 的 CommitID 跟踪变量
