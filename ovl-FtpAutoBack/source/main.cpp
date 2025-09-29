@@ -933,8 +933,13 @@ public:
         ini_gets("WebDAV", "password", "未设置", password, sizeof(password), CONFIG_FILE_PATH);
         bool auto_backup = ini_getbool("Nx", "auto_backup", 0, CONFIG_FILE_PATH);
 
+        if (!auto_backup) {
+            list->addItem(new tsl::elm::CustomDrawer([](tsl::gfx::Renderer* renderer, s32 x, s32 y, s32 w, s32 h) {
+                // 绘制警告文本，使用橙色作为警告颜色
+                renderer->drawString("  自动备份功能已关闭", false, x + 10, y + 20, 18, renderer->a({0xF, 0x8, 0x0, 0xF}));
+            }), 30);
+        }
         // 添加网络设置选项，显示从配置文件读取的实际值
-        list->addItem(new tsl::elm::ListItem("自动备份", auto_backup ? "开" : "关"));
         list->addItem(new tsl::elm::ListItem("网盘品牌", getBrandNameFromUrl(origin)));
         list->addItem(new tsl::elm::ListItem("网盘路径", basepath));
         list->addItem(new PasswordItem("用户账号", username));
