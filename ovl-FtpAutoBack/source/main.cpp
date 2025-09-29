@@ -338,7 +338,7 @@ public:
                 if (keys & HidNpadButton_A) {
 
                     // 保存到配置文件
-                    ini_puts("Network", "timeout", num, CONFIG_FILE_PATH);
+                    ini_puts("Ftp-Network", "timeout", num, CONFIG_FILE_PATH);
                     g_timeoutItem->setValue(num);
                     g_restartItem->setValue("需要重启");
                     tsl::goBack();
@@ -454,14 +454,14 @@ public:
         list->addItem(new tsl::elm::CategoryHeader("FTP设置"));
     
         // 直接从配置文件读
-        bool anonEnabled = ini_getbool("Login", "anon", 0, CONFIG_FILE_PATH);
+        bool anonEnabled = ini_getbool("Ftp-Login", "anon", 0, CONFIG_FILE_PATH);
         auto anonEnabledItem = new tsl::elm::ListItem("匿名登录", anonEnabled ? "开" : "关");
         anonEnabledItem->setClickListener([anonEnabledItem](u64 keys) {
             if (keys & HidNpadButton_A) {
                 // 切换匿名登录状态
-                bool new_anonEnabled = !ini_getbool("Login", "anon", 0, CONFIG_FILE_PATH);
+                bool new_anonEnabled = !ini_getbool("Ftp-Login", "anon", 0, CONFIG_FILE_PATH);
                 anonEnabledItem->setValue(new_anonEnabled ? "开" : "关");
-                ini_putl("Login", "anon", new_anonEnabled ? 1 : 0, CONFIG_FILE_PATH);
+                ini_putl("Ftp-Login", "anon", new_anonEnabled ? 1 : 0, CONFIG_FILE_PATH);
                 g_restartItem->setValue("需要重启");
                 return true;
             }
@@ -470,12 +470,12 @@ public:
         list->addItem(anonEnabledItem);
 
         char timeout[10];
-        ini_gets("Network", "timeout", "0", timeout, sizeof(timeout), CONFIG_FILE_PATH);
+        ini_gets("Ftp-Network", "timeout", "0", timeout, sizeof(timeout), CONFIG_FILE_PATH);
         g_timeoutItem = new tsl::elm::ListItem("超时时间", timeout);
         g_timeoutItem->setClickListener([](u64 keys) {
             if (keys & HidNpadButton_A) {
                 // 将当前超时时间转换为整数
-                int currentTimeout = ini_getl("Network", "timeout", 0, CONFIG_FILE_PATH);
+                int currentTimeout = ini_getl("Ftp-Network", "timeout", 0, CONFIG_FILE_PATH);
                 // 确保数值在有效范围内
                 tsl::changeTo<TimeoutGui>(currentTimeout);
                 return true;
@@ -484,14 +484,14 @@ public:
         });
         list->addItem(g_timeoutItem);
         
-        bool use_localtimeEnabled = ini_getbool("Misc", "use_localtime", 0, CONFIG_FILE_PATH);
+        bool use_localtimeEnabled = ini_getbool("Ftp-Basic Settings", "use_localtime", 0, CONFIG_FILE_PATH);
         auto use_localtimeEnabledItem = new tsl::elm::ListItem("本地时区", use_localtimeEnabled ? "开" : "关");
         use_localtimeEnabledItem->setClickListener([use_localtimeEnabledItem](u64 keys) {
             if (keys & HidNpadButton_A) {
                 // 切换本地时区状态
-                bool new_use_localtimeEnabled = !ini_getbool("Misc", "use_localtime", 0, CONFIG_FILE_PATH);
+                bool new_use_localtimeEnabled = !ini_getbool("Ftp-Basic Settings", "use_localtime", 0, CONFIG_FILE_PATH);
                 use_localtimeEnabledItem->setValue(new_use_localtimeEnabled ? "开" : "关");
-                ini_putl("Misc", "use_localtime", new_use_localtimeEnabled ? 1 : 0, CONFIG_FILE_PATH);
+                ini_putl("Ftp-Basic Settings", "use_localtime", new_use_localtimeEnabled ? 1 : 0, CONFIG_FILE_PATH);
                 g_restartItem->setValue("需要重启");
                 return true;
             }
@@ -499,14 +499,14 @@ public:
         });
         list->addItem(use_localtimeEnabledItem);
 
-        bool mount_devicesEnabled = ini_getbool("Nx", "mount_devices", 0, CONFIG_FILE_PATH);
+        bool mount_devicesEnabled = ini_getbool("Ftp-Basic Settings", "mount_devices", 0, CONFIG_FILE_PATH);
         auto mount_devicesEnabledItem = new tsl::elm::ListItem("虚拟挂载", mount_devicesEnabled ? "开" : "关");
         mount_devicesEnabledItem->setClickListener([mount_devicesEnabledItem](u64 keys) {
             if (keys & HidNpadButton_A) {
                 // 切换虚拟挂载状态
-                bool new_mount_devicesEnabled = !ini_getbool("Nx", "mount_devices", 0, CONFIG_FILE_PATH);
+                bool new_mount_devicesEnabled = !ini_getbool("Ftp-Basic Settings", "mount_devices", 0, CONFIG_FILE_PATH);
                 mount_devicesEnabledItem->setValue(new_mount_devicesEnabled ? "开" : "关");
-                ini_putl("Nx", "mount_devices", new_mount_devicesEnabled ? 1 : 0, CONFIG_FILE_PATH);
+                ini_putl("Ftp-Basic Settings", "mount_devices", new_mount_devicesEnabled ? 1 : 0, CONFIG_FILE_PATH);
                 g_restartItem->setValue("需要重启");
                 return true;
             }
@@ -515,14 +515,14 @@ public:
         list->addItem(mount_devicesEnabledItem);
 
         
-        bool ledEnabled = ini_getbool("Nx", "led", 0, CONFIG_FILE_PATH);
+        bool ledEnabled = ini_getbool("Ftp-Basic Settings", "led", 0, CONFIG_FILE_PATH);
         auto ledEnabledItem = new tsl::elm::ListItem("LED闪烁", ledEnabled ? "开" : "关");
         ledEnabledItem->setClickListener([ledEnabledItem](u64 keys) {
             if (keys & HidNpadButton_A) {
                 // 切换LED闪烁状态
-                bool new_ledEnabled = !ini_getbool("Nx", "led", 0, CONFIG_FILE_PATH);
+                bool new_ledEnabled = !ini_getbool("Ftp-Basic Settings", "led", 0, CONFIG_FILE_PATH);
                 ledEnabledItem->setValue(new_ledEnabled ? "开" : "关");
-                ini_putl("Nx", "led", new_ledEnabled ? 1 : 0, CONFIG_FILE_PATH);
+                ini_putl("Ftp-Basic Settings", "led", new_ledEnabled ? 1 : 0, CONFIG_FILE_PATH);
                 g_restartItem->setValue("需要重启");
                 return true;
             }
@@ -530,14 +530,14 @@ public:
         });
         list->addItem(ledEnabledItem);
 
-        bool logEnabled = ini_getbool("Log", "log", 0, CONFIG_FILE_PATH);
+        bool logEnabled = ini_getbool("Common", "log", 0, CONFIG_FILE_PATH);
         auto logEnabledItem = new tsl::elm::ListItem("日志记录", logEnabled ? "开" : "关");
         logEnabledItem->setClickListener([logEnabledItem](u64 keys) {
             if (keys & HidNpadButton_A) {
                 // 切换日志记录状态
-                bool new_logEnabled = !ini_getbool("Log", "log", 0, CONFIG_FILE_PATH);
+                bool new_logEnabled = !ini_getbool("Common", "log", 0, CONFIG_FILE_PATH);
                 logEnabledItem->setValue(new_logEnabled ? "开" : "关");
-                ini_putl("Log", "log", new_logEnabled ? 1 : 0, CONFIG_FILE_PATH);
+                ini_putl("Common", "log", new_logEnabled ? 1 : 0, CONFIG_FILE_PATH);
                 g_restartItem->setValue("需要重启");
                 return true;
             }
@@ -589,7 +589,7 @@ public:
                 if (keys & HidNpadButton_A) {
 
                     // 保存到配置文件
-                    ini_puts("Backup", "maxback", num, CONFIG_FILE_PATH);
+                    ini_puts("Backup-Basic Settings", "maxback", num, CONFIG_FILE_PATH);
                     g_backupCountItem->setValue(num);
                     g_restartItem->setValue("需要重启");
                     tsl::goBack();
@@ -695,9 +695,9 @@ public:
         list->addItem(g_restartItem);
 
         // 直接从配置文件读
-        bool skip_ascii_convert = ini_getbool("Nx", "skip_ascii_convert", 0, CONFIG_FILE_PATH);
-        bool WebDAV_enabled = ini_getbool("WebDAV", "enabled", 0, CONFIG_FILE_PATH);
-        bool auto_backup = ini_getbool("Nx", "auto_backup", 0, CONFIG_FILE_PATH);
+        bool skip_ascii_convert = ini_getbool("Common", "skip_ascii_convert", 0, CONFIG_FILE_PATH);
+        bool WebDAV_enabled = ini_getbool("Backup-WebDAV", "WebDAV_enabled", 0, CONFIG_FILE_PATH);
+        bool auto_backup = ini_getbool("Backup-Basic Settings", "auto_backup_enabled", 0, CONFIG_FILE_PATH);
 
         list->addItem(new tsl::elm::CategoryHeader("自动备份设置"));
 
@@ -706,9 +706,9 @@ public:
         auto_backupItem->setClickListener([auto_backupItem](u64 keys) {
             if (keys & HidNpadButton_A) {
                 // 切换自动备份开关
-                bool new_auto_backup = !ini_getbool("Nx", "auto_backup", 0, CONFIG_FILE_PATH);
+                bool new_auto_backup = !ini_getbool("Backup-Basic Settings", "auto_backup_enabled", 0, CONFIG_FILE_PATH);
                 auto_backupItem->setValue(new_auto_backup ? "开" : "关");
-                ini_putl("Nx", "auto_backup", new_auto_backup ? 1 : 0, CONFIG_FILE_PATH);
+                ini_putl("Backup-Basic Settings", "auto_backup_enabled", new_auto_backup ? 1 : 0, CONFIG_FILE_PATH);
                 g_restartItem->setValue("需要重启");
                 return true;
             }
@@ -720,9 +720,9 @@ public:
         savenameItem->setClickListener([savenameItem](u64 keys) {
             if (keys & HidNpadButton_A) {
                 // 切换存档名称显示方式
-                bool new_skip_ascii_convert = !ini_getbool("Nx", "skip_ascii_convert", 0, CONFIG_FILE_PATH);
+                bool new_skip_ascii_convert = !ini_getbool("Common", "skip_ascii_convert", 0, CONFIG_FILE_PATH);
                 savenameItem->setValue(new_skip_ascii_convert ? "开" : "关");
-                ini_putl("Nx", "skip_ascii_convert", new_skip_ascii_convert ? 1 : 0, CONFIG_FILE_PATH);
+                ini_putl("Common", "skip_ascii_convert", new_skip_ascii_convert ? 1 : 0, CONFIG_FILE_PATH);
                 g_restartItem->setValue("需要重启");
                 return true;
             }
@@ -731,12 +731,12 @@ public:
         list->addItem(savenameItem);
         
         char maxback[10];
-        ini_gets("Backup", "maxback", "0", maxback, sizeof(maxback), CONFIG_FILE_PATH);
+        ini_gets("Backup-Basic Settings", "maxback", "0", maxback, sizeof(maxback), CONFIG_FILE_PATH);
         g_backupCountItem = new tsl::elm::ListItem("备份数量", maxback);
         g_backupCountItem->setClickListener([](u64 keys) {
             if (keys & HidNpadButton_A) {
                 // 将当前备份数量转换为整数
-                int currentCount = ini_getl("Backup", "maxback", 0, CONFIG_FILE_PATH);
+                int currentCount = ini_getl("Backup-Basic Settings", "maxback", 0, CONFIG_FILE_PATH);
                 // 确保数值在有效范围内
                 if (currentCount < 0 || currentCount > 10) currentCount = 0;
                 tsl::changeTo<BackupCountGui>(currentCount);
@@ -750,9 +750,9 @@ public:
         WebDAV_enabledItem->setClickListener([WebDAV_enabledItem](u64 keys) {
             if (keys & HidNpadButton_A) {
                 // 切换自动上传开关
-                bool new_WebDAV_enabled = !ini_getbool("WebDAV", "enabled", 0, CONFIG_FILE_PATH);
+                bool new_WebDAV_enabled = !ini_getbool("Backup-WebDAV", "WebDAV_enabled", 0, CONFIG_FILE_PATH);
                 WebDAV_enabledItem->setValue(new_WebDAV_enabled ? "开" : "关");
-                ini_putl("WebDAV", "enabled", new_WebDAV_enabled ? 1 : 0, CONFIG_FILE_PATH);
+                ini_putl("Backup-WebDAV", "eWebDAV_enabled", new_WebDAV_enabled ? 1 : 0, CONFIG_FILE_PATH);
                 g_restartItem->setValue("需要重启");
                 return true;
             }
@@ -854,10 +854,10 @@ public:
         
         // 直接从配置文件读取网络设置参数
         char portBuffer[10], timeoutBuffer[10], userBuffer[20], passBuffer[20];
-        ini_gets("Network", "port", "未设置", portBuffer, sizeof(portBuffer), CONFIG_FILE_PATH);
-        ini_gets("Network", "timeout", "未设置", timeoutBuffer, sizeof(timeoutBuffer), CONFIG_FILE_PATH);
-        ini_gets("Login", "user", "未设置", userBuffer, sizeof(userBuffer), CONFIG_FILE_PATH);
-        ini_gets("Login", "pass", "未设置", passBuffer, sizeof(passBuffer), CONFIG_FILE_PATH);
+        ini_gets("Ftp-Network", "port", "未设置", portBuffer, sizeof(portBuffer), CONFIG_FILE_PATH);
+        ini_gets("Ftp-Network", "timeout", "未设置", timeoutBuffer, sizeof(timeoutBuffer), CONFIG_FILE_PATH);
+        ini_gets("Ftp-Login", "user", "未设置", userBuffer, sizeof(userBuffer), CONFIG_FILE_PATH);
+        ini_gets("Ftp-Login", "pass", "未设置", passBuffer, sizeof(passBuffer), CONFIG_FILE_PATH);
         
         // 添加网络设置选项，显示从配置文件读取的实际值
         list->addItem(new tsl::elm::ListItem("IP地址", getCurrentIpAddress()));
@@ -927,11 +927,11 @@ public:
         
         // 直接从配置文件读取网络设置参数
         char origin[32], basepath[32], username[32], password[32];
-        ini_gets("WebDAV", "origin", "未设置", origin, sizeof(origin), CONFIG_FILE_PATH);
-        ini_gets("WebDAV", "basepath", "未设置", basepath, sizeof(basepath), CONFIG_FILE_PATH);
-        ini_gets("WebDAV", "username", "未设置", username, sizeof(username), CONFIG_FILE_PATH);
-        ini_gets("WebDAV", "password", "未设置", password, sizeof(password), CONFIG_FILE_PATH);
-        bool auto_backup = ini_getbool("Nx", "auto_backup", 0, CONFIG_FILE_PATH);
+        ini_gets("Backup-WebDAV", "origin", "未设置", origin, sizeof(origin), CONFIG_FILE_PATH);
+        ini_gets("Backup-WebDAV", "basepath", "未设置", basepath, sizeof(basepath), CONFIG_FILE_PATH);
+        ini_gets("Backup-WebDAV", "username", "未设置", username, sizeof(username), CONFIG_FILE_PATH);
+        ini_gets("Backup-WebDAV", "password", "未设置", password, sizeof(password), CONFIG_FILE_PATH);
+        bool auto_backup = ini_getbool("Backup-Basic Settings", "auto_backup_enabled", 0, CONFIG_FILE_PATH);
 
         if (!auto_backup) {
             list->addItem(new tsl::elm::CustomDrawer([](tsl::gfx::Renderer* renderer, s32 x, s32 y, s32 w, s32 h) {

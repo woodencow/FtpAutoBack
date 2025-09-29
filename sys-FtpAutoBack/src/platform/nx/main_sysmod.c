@@ -286,34 +286,47 @@ static u32 socketSelectVersion(void);
  */
 int main(void) {
 
+    // ====初始化FTP的部分====
     // 初始化日志，根据配置文件决定是否开启日志
     initialize_log();
+
     // 初始化FTP配置文件内容，如果初始化失败则EXIT
     if (!initialize_ftp_server_config()) return EXIT_FAILURE;
+
     // 初始化虚拟文件系统
     initialize_FS_VFS();
-    // 初始化自动备份目录
-    bool auto_backup_dir_init = initialize_AutoBack_DIR();
 
-    // 初始化curl服务，失败的话就跳过初始化WebDAV
-    bool curl_init_rc = initialize_Curl();
-    if (!curl_init_rc) webdav_config.enabled = false;
-    else initialize_WebDAV();
-
-    // 初始化FTP服务线程和自动备份线程
+    // 初始化FTP服务线程
     bool ftp_thread_state = initialize_Ftp_Thread();
-    
+    // ====初始化FTP完成====
+
+    // ====初始化自动备份的部分====
+    // 从配置文件读取自动备份开关状态
+    bool auto_backup_enabled = ini_getbool("Backup-Basic Settings", "auto_backup", 1, INI_PATH);
+
+    // 初始化用户目录（只有开启自动备份才初始化）
+    bool auto_backup_dir_init = false;
+    if (auto_backup_enabled) auto_backup_dir_init = initialize_AutoBack_DIR();
+    else log_file_write("未启用自动备份功能，跳过初始化用户目录");
+
+    // 只有初始化用户目录成功才执行
+    // 先初始化curl，成功则初始化WebDAV
+    // 无论curl初始化是否成功，都启动自动备份线程
+    bool curl_init_rc = false;
     bool auto_backup_thread_state = false;
-    if (auto_backup_dir_init) auto_backup_thread_state = initialize_AutoBack_Thread();
-    else log_file_write("初始化用户列表失败，禁止启用备份功能！");
+    if (auto_backup_dir_init) {
+        curl_init_rc = initialize_Curl();
+        if (!curl_init_rc) webdav_config.enabled = false;
+        else initialize_WebDAV();
+        auto_backup_thread_state = initialize_AutoBack_Thread();
+    } else log_file_write("初始化用户列表失败，禁止启用备份功能！");
+    // ====初始化自动备份完成====
     
-    // ========== 主线程循环 ==========
     // 主线程等待，保持程序运行
     while (!g_should_exit) {
         svcSleepThread(1000000000); // 1秒延迟
     }
     
-    // ========== 程序退出清理 ==========
     // 退出时停止所有服务线程
     g_should_exit = true;
     
@@ -700,13 +713,6 @@ static bool initialize_Ftp_Thread(void) {
  * @return true 线程初始化成功，false 线程初始化失败
  */
 static bool initialize_AutoBack_Thread(void) {
-
-    bool auto_backup_enabled = ini_getbool("Backup-Basic Settings", "auto_backup", 1, INI_PATH);
-
-    if (!auto_backup_enabled) {
-        log_file_write("自动备份未启用，不启动自动备份线程！");
-        return false;
-    }
 
     log_file_write("开始创建自动备份线程...");
     Result auto_backup_thread_rc = threadCreate(&g_auto_backup_service_thread, auto_backup_thread, NULL, 
