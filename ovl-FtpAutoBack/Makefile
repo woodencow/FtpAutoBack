@@ -42,7 +42,7 @@ include $(DEVKITPRO)/libnx/switch_rules
 # BBBBBBBBBBBB     424242424242424242424242
 
 
-APP_TITLE	:=	FtpAutoBack
+APP_TITLE	:=	BBBBBBBBBBBB
 APP_VERSION :=	0.1.0
 
 TARGET		:=	FtpAutoBack
