@@ -1168,42 +1168,28 @@ static void auto_backup_thread(void* arg) {
     u64 current_commit_id = 0;      //当前的
     int commit_change_count = 0;
     
-    // 强制确保BSD套接字模式，保证TID监控100%运行
-    log_file_write("自动备份线程启动 - 需确保用 BSD 套接字模式来达到 TID 监控");
-    
-    // 如果当前处于WebDAV握手状态，强制切换回FTP模式
-    if (g_webdav_handshake_in_progress) {
-        log_file_write("检测到 WebDAV 握手进行中，强制切换到 FTP 模式");
-        Result force_switch_rc = switch_to_ftp_mode();
-        if (R_SUCCEEDED(force_switch_rc)) {
-            log_file_write("成功强制切换到 FTP 模式用于 TID 监控");
-        } else {
-            char error_buf[128];
-            snprintf(error_buf, sizeof(error_buf), "强制切换到 FTP 模式失败: 0x%x", force_switch_rc);
-            log_file_write(error_buf);
-        }
-        // 额外等待确保状态稳定
-        svcSleepThread(100000000LL); // 100ms
+    // 确保BSD套接字模式，保证TID监控100%运行
+    log_file_write("自动备份线程启动 - 需确保用 BSD 套接字模式来对 TID 监控");
+    Result force_switch_rc = switch_to_ftp_mode();
+    // 额外等待确保状态稳定
+    svcSleepThread(100000000LL); // 100ms
+
+    if (R_FAILED(force_switch_rc)) {
+        log_file_write("第一次启动BSD套接字失败，尝试第二次！");
+        if (R_SUCCEEDED(initialize_bsd_sockets())) log_file_write("第二次启动BSD套接字成功！");
+        else log_file_write("第二次启动BSD套接字失败！");
+        g_webdav_handshake_in_progress = false;
+        log_file_write("强制重置WebDAV握手状态！");
     }
-    
-    // 强制初始化BSD套接字，确保网络功能正常
-    Result bsd_init_rc = initialize_bsd_sockets();
-    if (R_SUCCEEDED(bsd_init_rc)) {
-        log_file_write("成功强制初始化 BSD 套接字用于 TID 监控");
-    } else {
-        char error_buf[128];
-        snprintf(error_buf, sizeof(error_buf), "警告: 初始化 BSD 套接字失败: 0x%x", bsd_init_rc);
-        log_file_write(error_buf);
-    }
-    
-    // 确保所有状态变量正确重置
-    g_webdav_handshake_in_progress = false;
-    log_file_write("所有套接字状态已重置，TID 监控准备开始");
-    
-    // 初始化获取一次当前TID
+
+    // 额外等待确保状态稳定
+    svcSleepThread(100000000LL); // 100ms
+
+    // 线程首次启动时获取一次当前正在运行的游戏TID
     get_current_tid(&current_tid);
     g_previous_game_tid = current_tid;
     
+    // 直接死循环监控TID变化
     while (!g_should_exit) {
         // 每隔一段时间检测TID变化
         static int tid_check_counter = 0;
@@ -1533,22 +1519,19 @@ static Result get_current_tid(u64* tid) {
         return rc;
     }
     
+
     u64 pid;
-    if (R_SUCCEEDED(rc = pmdmntGetApplicationProcessId(&pid))) {
-        Result pid_rc = pminfoGetProgramId(tid, pid);
-        if (0x20f == pid_rc) {
-            *tid = 0x0100000000001000ULL; // QLAUNCH_TID
-            rc = 0; // 设置为成功状态，确保日志能被记录
-        } else {
-            rc = pid_rc;
-        }
-    } else if (rc == 0x20f) {
+
+    // 获取当前应用的PID与进程ID
+    rc = pmdmntGetApplicationProcessId(&pid);
+    if (R_SUCCEEDED(rc)) rc = pminfoGetProgramId(tid, pid);
+
+    // 统一处理rc的值
+    if (rc == 0x20f) {
         *tid = 0x0100000000001000ULL; // QLAUNCH_TID
         rc = 0; // 设置为成功状态，确保日志能被记录
-    } else {
-        *tid = 0;
-    }
-    
+    } else *tid = 0;
+        
     pminfoExit();
     pmdmntExit();
     return rc;
