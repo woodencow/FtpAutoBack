@@ -249,29 +249,48 @@ static void url_decode(char* str);
 static u32 socketSelectVersion(void);
 
 // ========== 主函数实现 ==========
-// 主函数
+/**
+ * 主函数 - FTP自动备份系统模块入口点
+ * 
+ * 功能说明：
+ * 1. 初始化配置参数（从config.ini读取FTP服务器、登录、网络等配置）
+ * 2. 设置自定义挂载点（支持最多10个用户自定义的挂载路径）
+ * 3. 启动FTP服务器线程和自动备份监控线程
+ * 4. 处理系统退出信号，确保资源正确释放
+ * 
+ * 配置文件路径：/config/ftpsrv/config.ini
+ * 支持的功能：FTP服务器、WebDAV上传、自动存档备份、LED指示灯控制
+ */
 int main(void) {
+    // ========== 初始化FTP服务器配置 ==========
     g_ftpsrv_config.custom_command = CUSTOM_COMMANDS;
     g_ftpsrv_config.custom_command_count = CUSTOM_COMMANDS_SIZE;
     g_ftpsrv_config.log_callback = ftp_log_callback;
     g_ftpsrv_config.progress_callback = ftp_progress_callback;
-    g_ftpsrv_config.anon = ini_getbool("Login", "anon", 0, INI_PATH);
-    int user_len = ini_gets("Login", "user", "", g_ftpsrv_config.user, sizeof(g_ftpsrv_config.user), INI_PATH);
-    int pass_len = ini_gets("Login", "pass", "", g_ftpsrv_config.pass, sizeof(g_ftpsrv_config.pass), INI_PATH);
-    g_ftpsrv_config.port = ini_getl("Network", "port", 21, INI_PATH);
-    g_ftpsrv_config.timeout = ini_getl("Network", "timeout", 0, INI_PATH);
-    g_ftpsrv_config.use_localtime = ini_getbool("Misc", "use_localtime", 0, INI_PATH);
-    bool log_enabled = ini_getbool("Log", "log", 0, INI_PATH);
+    
+    // 从配置文件读取登录设置
+    g_ftpsrv_config.anon = ini_getbool("Ftp-Login", "anon", 0, INI_PATH);
+    int user_len = ini_gets("Ftp-Login", "user", "", g_ftpsrv_config.user, sizeof(g_ftpsrv_config.user), INI_PATH);
+    int pass_len = ini_gets("Ftp-Login", "pass", "", g_ftpsrv_config.pass, sizeof(g_ftpsrv_config.pass), INI_PATH);
+    
+    // 从配置文件读取网络设置
+    g_ftpsrv_config.port = ini_getl("Ftp-Network", "port", 21, INI_PATH);
+    g_ftpsrv_config.timeout = ini_getl("Ftp-Network", "timeout", 0, INI_PATH);
+    g_ftpsrv_config.use_localtime = ini_getbool("Ftp-Basic Settings", "use_localtime", 0, INI_PATH);
+    bool log_enabled = ini_getbool("Common", "log", 0, INI_PATH);
 
-    // get nx config
-    bool mount_devices = ini_getbool("Nx", "mount_devices", 1, INI_PATH);
-    bool mount_bis = ini_getbool("Nx", "mount_bis", 0, INI_PATH);
-    bool save_writable = ini_getbool("Nx", "save_writable", 0, INI_PATH);
-    g_led_enabled = ini_getbool("Nx", "led", 1, INI_PATH);
-    bool skip_ascii_convert = ini_getbool("Nx", "skip_ascii_convert", 0, INI_PATH);
-    bool auto_backup_enabled = ini_getbool("Nx", "auto_backup", 1, INI_PATH);  // 读取自动备份配置
-    g_ftpsrv_config.port = ini_getl("Nx", "sys_port", g_ftpsrv_config.port, INI_PATH); // compat
+    // ========== 读取Nintendo Switch特定配置 ==========
+    bool mount_devices = ini_getbool("Ftp-Basic Settings", "mount_devices", 1, INI_PATH);
+    bool mount_bis = ini_getbool("Ftp-Basic Settings", "mount_bis", 0, INI_PATH);
+    bool save_writable = ini_getbool("Ftp-Basic Settings", "save_writable", 0, INI_PATH);
+    g_led_enabled = ini_getbool("Ftp-Basic Settings", "led", 1, INI_PATH);
+    bool skip_ascii_convert = ini_getbool("Common", "skip_ascii_convert", 0, INI_PATH);
+    bool auto_backup_enabled = ini_getbool("Backup-Basic Settings", "auto_backup", 1, INI_PATH);  // 读取自动备份配置
+    
+    // 不知道读的啥玩意
+    // g_ftpsrv_config.port = ini_getl("Ftp-Basic Settings", "sys_port", g_ftpsrv_config.port, INI_PATH); // 兼容性设置
 
+    // ========== 读取自定义挂载点配置 ==========
     // 读取自定义挂载点（仅在mount_devices为真时）
     CustomMountPoint g_custom_mounts[10] = {0};  // 最多10个自定义挂载点
     int g_custom_mount_count = 0;
@@ -287,8 +306,8 @@ int main(void) {
             snprintf(path_key, sizeof(path_key), "custom_path%d", i);
             
             // 读取显示名称和挂载路径
-            ini_gets("Custom Mount Point", name_key, "", temp_name, sizeof(temp_name), INI_PATH);
-            ini_gets("Custom Mount Point", path_key, "", temp_path, sizeof(temp_path), INI_PATH);
+            ini_gets("Ftp-Custom Mount Point", name_key, "", temp_name, sizeof(temp_name), INI_PATH);
+            ini_gets("Ftp-Custom Mount Point", path_key, "", temp_path, sizeof(temp_path), INI_PATH);
             
             // 如果两个值都不为空，则添加到数组中
             if (strlen(temp_name) > 0 && strlen(temp_path) > 0) {
@@ -298,35 +317,23 @@ int main(void) {
             } else break;
         }
     }
-    
-    // get Nx-Sys overrides
-    g_ftpsrv_config.anon = ini_getbool("Nx-Sys", "anon", g_ftpsrv_config.anon, INI_PATH);
-    user_len = ini_gets("Nx-Sys", "user", g_ftpsrv_config.user, g_ftpsrv_config.user, sizeof(g_ftpsrv_config.user), INI_PATH);
-    pass_len = ini_gets("Nx-Sys", "pass", g_ftpsrv_config.pass, g_ftpsrv_config.pass, sizeof(g_ftpsrv_config.pass), INI_PATH);
-    g_ftpsrv_config.port = ini_getl("Nx-Sys", "port", g_ftpsrv_config.port, INI_PATH);
-    g_ftpsrv_config.timeout = ini_getl("Nx-Sys", "timeout", g_ftpsrv_config.timeout, INI_PATH);
-    g_ftpsrv_config.use_localtime = ini_getbool("Nx-Sys", "use_localtime", g_ftpsrv_config.use_localtime, INI_PATH);
-    log_enabled = ini_getbool("Nx-Sys", "log", log_enabled, INI_PATH);
-    mount_devices = ini_getbool("Nx-Sys", "mount_devices", mount_devices, INI_PATH);
-    mount_bis = ini_getbool("Nx-Sys", "mount_bis", mount_bis, INI_PATH);
-    save_writable = ini_getbool("Nx-Sys", "save_writable", save_writable, INI_PATH);
-    g_led_enabled = ini_getbool("Nx-Sys", "led", g_led_enabled, INI_PATH);
 
-    // 读取WebDAV配置
-    webdav_config.enabled = ini_getbool("WebDAV", "enabled", 0, INI_PATH);
-    ini_gets("WebDAV", "origin", "", webdav_config.origin, sizeof(webdav_config.origin), INI_PATH);
-    ini_gets("WebDAV", "basepath", "", webdav_config.basepath, sizeof(webdav_config.basepath), INI_PATH);
-    ini_gets("WebDAV", "username", "", webdav_config.username, sizeof(webdav_config.username), INI_PATH);
-    ini_gets("WebDAV", "password", "", webdav_config.password, sizeof(webdav_config.password), INI_PATH);
+    // ========== 读取WebDAV配置 ==========
+    webdav_config.enabled = ini_getbool("Backup-WebDAV", "enabled", 0, INI_PATH);
+    ini_gets("Backup-WebDAV", "origin", "", webdav_config.origin, sizeof(webdav_config.origin), INI_PATH);
+    ini_gets("Backup-WebDAV", "basepath", "", webdav_config.basepath, sizeof(webdav_config.basepath), INI_PATH);
+    ini_gets("Backup-WebDAV", "username", "", webdav_config.username, sizeof(webdav_config.username), INI_PATH);
+    ini_gets("Backup-WebDAV", "password", "", webdav_config.password, sizeof(webdav_config.password), INI_PATH);
 
-    // 读取maxback配置
-    g_maxback = ini_getl("Backup", "maxback", 0, INI_PATH);
+    // ========== 读取备份配置 ==========
+    g_maxback = ini_getl("Backup-Basic Settings", "maxback", 0, INI_PATH);  // 最大备份数量
 
+    // ========== 初始化日志系统 ==========
     if (log_enabled) {
         log_file_init(LOG_PATH, "ftpsrv - " FTPSRV_VERSION_HASH " - NX-sys");
     }
 
-    // 初始化全局curl服务
+    // ========== 初始化CURL库 ==========
     CURLcode curl_result = curl_global_init(CURL_GLOBAL_ALL);
     if (curl_result != CURLE_OK) {
         char curl_error_buf[128];
@@ -337,7 +344,7 @@ int main(void) {
         log_file_write("Global curl service initialized successfully");
     }
 
-    // 初始化WebDAV服务
+    // ========== 初始化WebDAV服务 ==========
     if (webdav_config.enabled) {
         char webdav_log_buf[128];
         snprintf(webdav_log_buf, sizeof(webdav_log_buf), "WebDAV service enabled. Origin: %s, Basepath: %s, User: %s", webdav_config.origin, webdav_config.basepath, webdav_config.username);
@@ -347,14 +354,17 @@ int main(void) {
         log_file_write("WebDAV service disabled");
     }
 
-    // exit early as this is a security risk due to ldn-mitm.
+    // ========== 验证登录配置 ==========
+    // 如果用户名、密码和匿名登录都未设置，则退出（安全风险）
     if (!user_len && !pass_len && !g_ftpsrv_config.anon) {
         log_file_write("User / Pass / Anon not set in config!");
         return EXIT_FAILURE;
     }
 
+    // ========== 初始化虚拟文件系统 ==========
     vfs_nx_init(NULL, mount_devices, save_writable, mount_bis, skip_ascii_convert, g_custom_mounts);
 
+    // ========== 创建自动备份目录结构 ==========
     // 创建autoback文件夹
     FsFileSystem* sdmc_fs = fsdev_wrapGetDeviceFileSystem("sdmc");
     if (sdmc_fs != NULL) {
@@ -369,6 +379,7 @@ int main(void) {
             log_file_write(buf);
         }
 
+        // ========== 为每个用户创建备份目录 ==========
         // 遍历全部用户名，在autoback文件夹内生成用户名文件夹
         AccountUid user_ids[ACC_USER_LIST_SIZE] = {0};
         s32 total_users = 0;
@@ -425,19 +436,23 @@ int main(void) {
         log_file_write("failed to get SD card filesystem");
     }
 
+    // ========== 创建服务线程 ==========
     // 创建FTP服务线程
     Thread ftp_service_thread;
     Thread auto_backup_service_thread;
     
+    // ========== 线程创建调试信息 ==========
     // 记录线程创建参数
     char debug_buf[256];
     snprintf(debug_buf, sizeof(debug_buf), "Creating FTP thread with stack size: %d, priority: 0x%x, cpu: %d", 16*1024, 49, 3);
     log_file_write(debug_buf);
     
+    // ========== 分配线程栈内存 ==========
     // 参考main.c中的实现，显式分配栈内存
     static char ftp_thread_stack[16 * 1024] __attribute__((aligned(0x1000)));
     static char auto_backup_thread_stack[64 * 1024] __attribute__((aligned(0x1000)));  // 优化: 128KB -> 64KB
     
+    // ========== 创建并启动FTP服务线程 ==========
     // 根据sysFtpAutoBack.json配置，线程优先级必须在24-63范围内，使用与主线程相同的优先级49
     Result ftp_thread_rc = threadCreate(&ftp_service_thread, ftp_thread, NULL, ftp_thread_stack, 16 * 1024, 49, 3);
     if (R_SUCCEEDED(ftp_thread_rc)) {
@@ -458,6 +473,7 @@ int main(void) {
         log_file_write(debug_buf);
     }
     
+    // ========== 创建并启动自动备份线程 ==========
     // 创建自动备份存档线程（根据配置决定是否启用）
     Result auto_backup_thread_rc = 1; // 初始化为失败状态
     
@@ -487,7 +503,7 @@ int main(void) {
         log_file_write("Auto backup disabled by configuration (auto_backup = 0)");
     }
     
-    // 等待线程退出并关闭线程
+    // ========== 等待线程退出并关闭线程 ==========
     if (R_SUCCEEDED(ftp_thread_rc)) {
         threadWaitForExit(&ftp_service_thread);
         threadClose(&ftp_service_thread);
@@ -498,11 +514,13 @@ int main(void) {
         threadClose(&auto_backup_service_thread);
     }
     
+    // ========== 主线程循环 ==========
     // 主线程等待，保持程序运行
     while (!g_should_exit) {
         svcSleepThread(1000000000); // 1秒延迟
     }
     
+    // ========== 程序退出清理 ==========
     // 退出时停止所有服务线程
     g_should_exit = true;
     
@@ -517,6 +535,7 @@ int main(void) {
         threadClose(&auto_backup_service_thread);
     }
     
+    // ========== 清理全局服务 ==========
     // 清理全局curl服务
     curl_global_cleanup();
     log_file_write("Global curl service cleaned up");
