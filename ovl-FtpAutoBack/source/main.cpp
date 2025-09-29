@@ -647,7 +647,7 @@ public:
                 // 创建应用关于信息的多彩文本
                 std::vector<TextSegment> coloredAbout = {
                     // 插件功能
-                    {"备份存档:", TextColors::CYAN, 20},
+                    {"自动备份:", TextColors::CYAN, 20},
                     {"\n• ", TextColors::GRAY, 18},
                     {"打开或者关闭插件自动备份存档的开关", TextColors::WHITE, 18},
 
@@ -697,9 +697,24 @@ public:
         // 直接从配置文件读
         bool skip_ascii_convert = ini_getbool("Nx", "skip_ascii_convert", 0, CONFIG_FILE_PATH);
         bool WebDAV_enabled = ini_getbool("WebDAV", "enabled", 0, CONFIG_FILE_PATH);
+        bool auto_backup = ini_getbool("Nx", "auto_backup", 0, CONFIG_FILE_PATH);
 
         list->addItem(new tsl::elm::CategoryHeader("自动备份设置"));
-        list->addItem(new tsl::elm::ListItem("备份存档", "--"));
+
+        
+        auto auto_backupItem = new tsl::elm::ListItem("自动备份", auto_backup ? "开" : "关");
+        auto_backupItem->setClickListener([auto_backupItem](u64 keys) {
+            if (keys & HidNpadButton_A) {
+                // 切换自动备份开关
+                bool new_auto_backup = !ini_getbool("Nx", "auto_backup", 0, CONFIG_FILE_PATH);
+                auto_backupItem->setValue(new_auto_backup ? "开" : "关");
+                ini_putl("Nx", "auto_backup", new_auto_backup ? 1 : 0, CONFIG_FILE_PATH);
+                g_restartItem->setValue("需要重启");
+                return true;
+            }
+            return false;
+        });
+        list->addItem(auto_backupItem);
 
         auto savenameItem = new tsl::elm::ListItem("存档名称", skip_ascii_convert ? "开" : "关");
         savenameItem->setClickListener([savenameItem](u64 keys) {
@@ -916,7 +931,14 @@ public:
         ini_gets("WebDAV", "basepath", "未设置", basepath, sizeof(basepath), CONFIG_FILE_PATH);
         ini_gets("WebDAV", "username", "未设置", username, sizeof(username), CONFIG_FILE_PATH);
         ini_gets("WebDAV", "password", "未设置", password, sizeof(password), CONFIG_FILE_PATH);
-        
+        bool auto_backup = ini_getbool("Nx", "auto_backup", 0, CONFIG_FILE_PATH);
+
+        if (!auto_backup) {
+            list->addItem(new tsl::elm::CustomDrawer([](tsl::gfx::Renderer* renderer, s32 x, s32 y, s32 w, s32 h) {
+                // 绘制警告文本，使用橙色作为警告颜色
+                renderer->drawString("  自动备份功能已关闭", false, x + 10, y + 20, 18, renderer->a({0xF, 0x8, 0x0, 0xF}));
+            }), 30);
+        }
         // 添加网络设置选项，显示从配置文件读取的实际值
         list->addItem(new tsl::elm::ListItem("网盘品牌", getBrandNameFromUrl(origin)));
         list->addItem(new tsl::elm::ListItem("网盘路径", basepath));

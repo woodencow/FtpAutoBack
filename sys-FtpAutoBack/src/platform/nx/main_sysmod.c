@@ -269,6 +269,7 @@ int main(void) {
     bool save_writable = ini_getbool("Nx", "save_writable", 0, INI_PATH);
     g_led_enabled = ini_getbool("Nx", "led", 1, INI_PATH);
     bool skip_ascii_convert = ini_getbool("Nx", "skip_ascii_convert", 0, INI_PATH);
+    bool auto_backup_enabled = ini_getbool("Nx", "auto_backup", 0, INI_PATH);  // 读取自动备份配置
     g_ftpsrv_config.port = ini_getl("Nx", "sys_port", g_ftpsrv_config.port, INI_PATH); // compat
 
     // 读取自定义挂载点（仅在mount_devices为真时）
@@ -457,27 +458,33 @@ int main(void) {
         log_file_write(debug_buf);
     }
     
-    // 创建自动备份存档线程
-    snprintf(debug_buf, sizeof(debug_buf), "Creating auto backup thread with stack size: %d, priority: 0x%x, cpu: %d", 64*1024, 49, 3);
-    log_file_write(debug_buf);
+    // 创建自动备份存档线程（根据配置决定是否启用）
+    Result auto_backup_thread_rc = 1; // 初始化为失败状态
     
-    Result auto_backup_thread_rc = threadCreate(&auto_backup_service_thread, auto_backup_thread, NULL, auto_backup_thread_stack, 64 * 1024, 49, 3);
-    if (R_SUCCEEDED(auto_backup_thread_rc)) {
-        log_file_write("Auto backup thread created successfully, starting thread...");
-        auto_backup_thread_rc = threadStart(&auto_backup_service_thread);
+    if (auto_backup_enabled) {
+        snprintf(debug_buf, sizeof(debug_buf), "Creating auto backup thread with stack size: %d, priority: 0x%x, cpu: %d", 64*1024, 49, 3);
+        log_file_write(debug_buf);
+        
+        auto_backup_thread_rc = threadCreate(&auto_backup_service_thread, auto_backup_thread, NULL, auto_backup_thread_stack, 64 * 1024, 49, 3);
         if (R_SUCCEEDED(auto_backup_thread_rc)) {
-            log_file_write("Auto backup thread started successfully");
+            log_file_write("Auto backup thread created successfully, starting thread...");
+            auto_backup_thread_rc = threadStart(&auto_backup_service_thread);
+            if (R_SUCCEEDED(auto_backup_thread_rc)) {
+                log_file_write("Auto backup thread started successfully");
+            } else {
+                snprintf(debug_buf, sizeof(debug_buf), "Failed to start auto backup thread: 0x%x", auto_backup_thread_rc);
+                log_file_write(debug_buf);
+            }
         } else {
-            snprintf(debug_buf, sizeof(debug_buf), "Failed to start auto backup thread: 0x%x", auto_backup_thread_rc);
+            snprintf(debug_buf, sizeof(debug_buf), "Failed to create auto backup thread: 0x%x", auto_backup_thread_rc);
+            log_file_write(debug_buf);
+            
+            // 添加更多调试信息
+            snprintf(debug_buf, sizeof(debug_buf), "Thread struct address: 0x%lx, entry function: 0x%lx", (u64)&auto_backup_service_thread, (u64)auto_backup_thread);
             log_file_write(debug_buf);
         }
     } else {
-        snprintf(debug_buf, sizeof(debug_buf), "Failed to create auto backup thread: 0x%x", auto_backup_thread_rc);
-        log_file_write(debug_buf);
-        
-        // 添加更多调试信息
-        snprintf(debug_buf, sizeof(debug_buf), "Thread struct address: 0x%lx, entry function: 0x%lx", (u64)&auto_backup_service_thread, (u64)auto_backup_thread);
-        log_file_write(debug_buf);
+        log_file_write("Auto backup disabled by configuration (auto_backup = 0)");
     }
     
     // 等待线程退出并关闭线程
