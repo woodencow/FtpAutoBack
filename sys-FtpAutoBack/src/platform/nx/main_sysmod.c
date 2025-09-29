@@ -873,7 +873,7 @@ static void cleanup_standard_sockets(void) {
     if (g_standard_socket_initialized) {
         socketExit();
         g_standard_socket_initialized = false;
-        log_file_write("Standard sockets cleaned up");
+        log_file_write("标准套接字已清理！");
     }
 }
 
@@ -1073,7 +1073,7 @@ Result switch_to_webdav_mode(void) {
 }
 
 Result switch_to_ftp_mode(void) {
-    log_file_write("Switching to FTP mode...");
+    log_file_write("准备切换到FTP模式");
     
     // 清理标准套接字
     cleanup_standard_sockets();
@@ -1083,62 +1083,56 @@ Result switch_to_ftp_mode(void) {
     
     // 初始化BSD套接字
     Result rc = initialize_bsd_sockets();
-    if (R_SUCCEEDED(rc)) {
-        log_file_write("Successfully switched to FTP mode");
-        
-        // 确保状态完全同步
-        svcSleepThread(50000000LL); // 额外50ms确保状态同步
-        log_file_write("FTP mode switch completed, ready for TID monitoring");
-        
-        // 带重试机制的套接字验证
-        bool socket_ready = false;
-        int retry_count = 0;
-        const int max_retries = 5;
-        const int retry_delay_ms = 200; // 200ms延迟
-        
-        while (!socket_ready && retry_count < max_retries) {
-            if (g_bsd_initialized && is_network_available()) {
-                socket_ready = true;
-                break;
-            }
-            
-            retry_count++;
-            char retry_log[128];
-            snprintf(retry_log, sizeof(retry_log), 
-                     "Socket verification attempt %d/%d failed, retrying...", 
-                     retry_count, max_retries);
-            log_file_write(retry_log);
-            
-            // 等待后重试
-            svcSleepThread(retry_delay_ms * 1000000LL);
-        }
-        
-        if (socket_ready) {
-            // 套接字验证成功，重置状态变量
-            g_webdav_handshake_in_progress = false;
-            log_file_write("Socket verification successful, WebDAV handshake status reset");
-            log_file_write("Auto backup thread can resume TID monitoring");
-        } else {
-            // 重试失败，使用强制重置机制防止死锁
-            char warning_log[128];
-            snprintf(warning_log, sizeof(warning_log), 
-                     "Socket verification failed after %d attempts, forcing status reset to prevent deadlock", 
-                     max_retries);
-            log_file_write(warning_log);
-            
-            // 强制重置状态变量，防止自动备份线程永久阻塞
-            g_webdav_handshake_in_progress = false;
-            log_file_write("Forced WebDAV handshake status reset - auto backup thread will resume");
-            log_file_write("Note: Network connectivity may be unstable, but TID monitoring will continue");
-        }
-    } else {
-        char error_buf[128];
-        snprintf(error_buf, sizeof(error_buf), "Failed to switch to FTP mode: 0x%x", rc);
-        log_file_write(error_buf);
-        
+    if (R_FAILED(rc)) {
         // BSD套接字初始化失败，也需要重置状态防止死锁
-        log_file_write("BSD socket initialization failed, forcing status reset to prevent deadlock");
+        char error_buf[128];
+        snprintf(error_buf, sizeof(error_buf), "初始化BSD套接字失败,无法切换到FTP模式: 0x%x", rc);
+        log_file_write(error_buf);
+        log_file_write("BSD套接字初始化失败，已强制重置WebDAV握手状态以防止死锁");
         g_webdav_handshake_in_progress = false;
+        return rc;
+    }
+
+    log_file_write("初始化BSD套接字成功！");
+    // 确保状态完全同步
+    svcSleepThread(50000000LL); // 额外50ms确保状态同步
+
+    // 初始化完成，需要验证套接字
+    bool socket_ready = false;
+    int retry_count = 0;
+    const int max_retries = 5;
+    const int retry_delay_ms = 200; // 200ms延迟
+    
+    // 重试5次验证套接字状态，每次200ms延迟
+    while (!socket_ready && retry_count < max_retries) {
+        if (g_bsd_initialized && is_network_available()) {
+            socket_ready = true;
+            break;
+        }
+        
+        retry_count++;
+        char retry_log[128];
+        snprintf(retry_log, sizeof(retry_log), 
+                    "正在验证套接字与网络是否就绪，第%d/%d次重试", 
+                    retry_count, max_retries);
+        log_file_write(retry_log);
+        
+        // 等待后重试
+        svcSleepThread(retry_delay_ms * 1000000LL);
+    }
+    
+    // 重置握手状态
+    g_webdav_handshake_in_progress = false;
+
+    if (socket_ready) {
+        log_file_write("套接字验证成功，WebDAV握手状态已重置");
+        log_file_write("自动备份线程可以重新开始TID监控");
+    } else {
+        char warning_log[128];
+        snprintf(warning_log, sizeof(warning_log), "套接字验证失败，已重试%d次，强制重置WebDAV状态以防止死锁", max_retries);
+        log_file_write(warning_log);
+        log_file_write("已强制重置WebDAV握手状态，自动备份线程将继续监控TID");
+        log_file_write("注意：网络连接可能不稳定，但是TID监控将继续进行");
     }
     
     return rc;
@@ -1166,15 +1160,16 @@ static void ftp_thread(void* arg) {
 
 // 自动备份存档线程函数
 static void auto_backup_thread(void* arg) {
+    // 当前的id
     u64 current_tid = 0;
     
     // 添加commitid变化检测变量
-    u64 previous_commit_id = 0;
-    u64 current_commit_id = 0;
+    u64 previous_commit_id = 0;    //之前的
+    u64 current_commit_id = 0;      //当前的
     int commit_change_count = 0;
     
     // 强制确保BSD套接字模式，保证TID监控100%运行
-    log_file_write("自动备份线程启动 - 确保用于 TID 监控的 BSD 套接字模式");
+    log_file_write("自动备份线程启动 - 需确保用 BSD 套接字模式来达到 TID 监控");
     
     // 如果当前处于WebDAV握手状态，强制切换回FTP模式
     if (g_webdav_handshake_in_progress) {
