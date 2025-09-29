@@ -47,7 +47,7 @@
 // ========== 宏定义 ==========
 // NTP相关定义
 #define UNIX_OFFSET 2208988800L
-#define NTP_DEFAULT_SERVER "pool.ntp.org"
+#define NTP_DEFAULT_SERVER "ntp.ntsc.ac.cn"
 #define NTP_DEFAULT_PORT "123"
 #define NTP_DEFAULT_TIMEOUT 3
 #define NTP_FLAGS 0x23  // Flags 00|100|011 for li=0, vn=4, mode=3
