@@ -1530,8 +1530,11 @@ static Result get_current_tid(u64* tid) {
     if (rc == 0x20f) {
         *tid = 0x0100000000001000ULL; // QLAUNCH_TID
         rc = 0; // 设置为成功状态，确保日志能被记录
-    } else *tid = 0;
-        
+    } else if (R_FAILED(rc)) {
+        *tid = 0; // 只有在真正失败时才设置为0
+        log_file_write("警告: 获取当前应用的PID或者TID失败，错误码: 0x%x", rc);
+    }
+
     pminfoExit();
     pmdmntExit();
     return rc;
