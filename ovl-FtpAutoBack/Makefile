@@ -187,15 +187,18 @@ DEPENDS	:=	$(OFILES:.o=.d)
 #---------------------------------------------------------------------------------
 # 主要目标
 #---------------------------------------------------------------------------------
+.PHONY: force all clean
 all	:	 $(OUTPUT).ovl
 
-$(OUTPUT).ovl		:	$(OUTPUT).elf $(OUTPUT).nacp 
+$(OUTPUT).ovl		:	$(OUTPUT).elf $(OUTPUT).nacp force
 	@elf2nro $< $@ $(NROFLAGS)
 	@echo "built ... $(notdir $(OUTPUT).ovl)"
 
-$(OUTPUT).elf	:	$(OFILES)
+$(OUTPUT).elf	:	$(OFILES) force
 
-$(OFILES_SRC)	: $(HFILES_BIN)
+force:
+
+$(OFILES_SRC)	: $(HFILES_BIN) force
 
 #---------------------------------------------------------------------------------
 # 对于用作二进制数据的每个扩展名，都需要这样的规则
