@@ -11,14 +11,14 @@ AutoBackupSettingTab::AutoBackupSettingTab() {
     this->addView(new brls::Label(brls::LabelStyle::DESCRIPTION, "修改自动备份相关设置", true));
 
     // 自动备份上传开关
-    std::string webdavEnabled = utils::readConfigOption("WebDAV", "enabled", "0");
+    std::string webdavEnabled = utils::readConfigOption("Backup-WebDAV", "WebDAV_enabled", "0");
     bool enabled = (webdavEnabled == "1");
     brls::ToggleListItem* backupEnable = new brls::ToggleListItem("启用自动备份上传", enabled, "自动上传到配置的Webdav服务器");
     backupEnable->setReduceDescriptionSpacing(true);
     backupEnable->getClickEvent()->subscribe([backupEnable](View* view) {
         bool toggleState = backupEnable->getToggleState();
         std::string value = toggleState ? "1" : "0";
-        if (utils::writeConfigOption("WebDAV", "enabled", value)) {
+        if (utils::writeConfigOption("Backup-WebDAV", "WebDAV_enabled", value)) {
             brls::Application::notify("设置已保存");
             utils::restartAutoBackup();
         } else {
@@ -28,7 +28,7 @@ AutoBackupSettingTab::AutoBackupSettingTab() {
     this->addView(backupEnable);
 
     // 最大备份数量设置
-    std::string maxBack = utils::readConfigOption("Backup", "maxback", "5");
+    std::string maxBack = utils::readConfigOption("Backup-Basic Settings", "maxback", "5");
     brls::InputListItem* Maxbackup = new brls::InputListItem("最大备份数量", maxBack, "", "设置每个游戏存档文件的最大备份次数 (1~10 | 0表示禁用限制,可能导致报错)");
     Maxbackup->setReduceDescriptionSpacing(true);
     Maxbackup->getClickEvent()->subscribe([Maxbackup](View* view) {
@@ -56,7 +56,7 @@ AutoBackupSettingTab::AutoBackupSettingTab() {
         // 更新输入框显示的值
         Maxbackup->setValue(validatedValue);
         
-        if (utils::writeConfigOption("Backup", "maxback", validatedValue)) {
+        if (utils::writeConfigOption("Backup-Basic Settings", "maxback", validatedValue)) {
             brls::Application::notify("设置已保存");
             utils::restartAutoBackup();
         } else {
