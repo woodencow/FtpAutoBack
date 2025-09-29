@@ -30,26 +30,23 @@ copy-outputs: ovl sys nro
 	@echo "=== 正在执行复制编译产物到 out/ 目录 ==="
 	@rm -rf out/
 	@echo "=== 已清理旧的 out/ 目录 ==="
-	@mkdir -p out/ovl-FtpAutoBack
-	@echo "=== 已创建新的 out/ovl-FtpAutoBack 目录 ==="
-	@mkdir -p out/sys-FtpAutoBack
-	@echo "=== 已创建新的 out/sys-FtpAutoBack 目录 ==="
-	@mkdir -p out/nro-FtpAutoBack
-	@echo "=== 已创建新的 out/nro-FtpAutoBack 目录 ==="
+	@mkdir -p out/switch/.overlays
+	@mkdir -p out/switch/AUTOBackup-manager
+	@echo "=== 已创建新的 out/ 目录 ==="
 	-@if [ -f ovl-FtpAutoBack/FtpAutoBack.ovl ]; then \
-		cp ovl-FtpAutoBack/FtpAutoBack.ovl out/ovl-FtpAutoBack/; \
+		cp ovl-FtpAutoBack/FtpAutoBack.ovl out/switch/.overlays/; \
 		echo "=== 已复制 FtpAutoBack.ovl ==="; \
 	else \
 		echo "*** 警告: 未找到 FtpAutoBack.ovl，可能编译失败 ***"; \
 	fi
 	-@if [ -d sys-FtpAutoBack/out/sysFtpAutoBack ]; then \
-		cp -r sys-FtpAutoBack/out/sysFtpAutoBack/* out/sys-FtpAutoBack/; \
+		cp -r sys-FtpAutoBack/out/sysFtpAutoBack/* out/; \
 		echo "=== 已复制 sys-FtpAutoBack 编译产物 ==="; \
 	else \
 		echo "*** 警告: 未找到 sys-FtpAutoBack 编译产物，可能编译失败 ***"; \
 	fi
 	-@if [ -f nro-FtpAutoBack/AUTOBackup-manager.nro ]; then \
-		cp nro-FtpAutoBack/AUTOBackup-manager.nro out/nro-FtpAutoBack/; \
+		cp nro-FtpAutoBack/AUTOBackup-manager.nro out/switch/AUTOBackup-manager/; \
 		echo "=== 已复制 AUTOBackup-manager.nro ==="; \
 	else \
 		echo "*** 警告: 未找到 AUTOBackup-manager.nro，可能编译失败 ***"; \

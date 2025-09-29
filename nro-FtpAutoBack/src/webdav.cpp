@@ -10,12 +10,12 @@ WebDAVSettingTab::WebDAVSettingTab() {
     this->addView(new brls::Label(brls::LabelStyle::DESCRIPTION, "修改WebDAV同步相关设置", true));
 
     // WebDAV服务器设置
-    std::string originValue = utils::readConfigOption("WebDAV", "origin", "");
+    std::string originValue = utils::readConfigOption("Backup-WebDAV", "origin", "");
     brls::InputListItem* webdavOrigin = new brls::InputListItem("WebDAV服务器", originValue, "", "设置WebDAV服务器地址");
     webdavOrigin->setReduceDescriptionSpacing(true);
     webdavOrigin->getClickEvent()->subscribe([webdavOrigin](View* view) {
         std::string value = webdavOrigin->getValue();
-        if (utils::writeConfigOption("WebDAV", "origin", value)) {
+        if (utils::writeConfigOption("Backup-WebDAV", "origin", value)) {
             brls::Application::notify("设置已保存");
             utils::restartAutoBackup();
         } else {
@@ -25,12 +25,12 @@ WebDAVSettingTab::WebDAVSettingTab() {
     this->addView(webdavOrigin);
 
     // WebDAV路径设置
-    std::string basePathValue = utils::readConfigOption("WebDAV", "basepath", "");
+    std::string basePathValue = utils::readConfigOption("Backup-WebDAV", "basepath", "");
     brls::InputListItem* webdavBasePath = new brls::InputListItem("WebDAV路径", basePathValue, "", "设置WebDAV基础路径  不了解请勿改动");
     webdavBasePath->setReduceDescriptionSpacing(true);
     webdavBasePath->getClickEvent()->subscribe([webdavBasePath](View* view) {
         std::string value = webdavBasePath->getValue();
-        if (utils::writeConfigOption("WebDAV", "basepath", value)) {
+        if (utils::writeConfigOption("Backup-WebDAV", "basepath", value)) {
             brls::Application::notify("设置已保存");
             utils::restartAutoBackup();
         } else {
@@ -40,7 +40,7 @@ WebDAVSettingTab::WebDAVSettingTab() {
     this->addView(webdavBasePath);
 
     // WebDAV账号设置
-    std::string usernameValue = utils::readConfigOption("WebDAV", "username", "");
+    std::string usernameValue = utils::readConfigOption("Backup-WebDAV", "username", "");
     // 移除可能存在的引号用于显示
     if (!usernameValue.empty() && usernameValue.front() == '"' && usernameValue.back() == '"') {
         usernameValue = usernameValue.substr(1, usernameValue.length() - 2);
@@ -51,7 +51,7 @@ WebDAVSettingTab::WebDAVSettingTab() {
         std::string value = webdavUsername->getValue();
         // 保存时添加引号
         std::string savedValue = "\"" + value + "\"";
-        if (utils::writeConfigOption("WebDAV", "username", savedValue)) {
+        if (utils::writeConfigOption("Backup-WebDAV", "username", savedValue)) {
             brls::Application::notify("设置已保存");
             utils::restartAutoBackup();
         } else {
@@ -61,7 +61,7 @@ WebDAVSettingTab::WebDAVSettingTab() {
     this->addView(webdavUsername);
 
     // WebDAV密码设置
-    std::string passwordValue = utils::readConfigOption("WebDAV", "password", "");
+    std::string passwordValue = utils::readConfigOption("Backup-WebDAV", "password", "");
     // 移除可能存在的引号用于显示
     if (!passwordValue.empty() && passwordValue.front() == '"' && passwordValue.back() == '"') {
         passwordValue = passwordValue.substr(1, passwordValue.length() - 2);
@@ -72,7 +72,7 @@ WebDAVSettingTab::WebDAVSettingTab() {
         std::string value = webdavPassword->getValue();
         // 保存时添加引号
         std::string savedValue = "\"" + value + "\"";
-        if (utils::writeConfigOption("WebDAV", "password", savedValue)) {
+        if (utils::writeConfigOption("Backup-WebDAV", "password", savedValue)) {
             brls::Application::notify("设置已保存");
             utils::restartAutoBackup();
         } else {
