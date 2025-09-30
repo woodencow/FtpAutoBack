@@ -669,9 +669,11 @@ public:
                     {"\n• ", TextColors::GRAY, 18},
                     {"开启后会在备份和上传时闪烁LED", TextColors::WHITE, 18},
 
-                    {"\n\n重启插件:", TextColors::CYAN, 20},
+                    {"\n\n高速上传:", TextColors::CYAN, 20},
                     {"\n• ", TextColors::GRAY, 18},
-                    {"修改设置后，需要重启插件生效", TextColors::WHITE, 18},
+                    {"此功能内存占用较高", TextColors::RED, 18},
+                    {"\n• ", TextColors::GRAY, 18},
+                    {"开启后会在极大提高上传的速度", TextColors::WHITE, 18},
                 };
                 
                 // 跳转到关于页面
@@ -703,6 +705,7 @@ public:
         bool WebDAV_enabled = ini_getbool("Backup-WebDAV", "WebDAV_enabled", 0, CONFIG_FILE_PATH);
         bool auto_backup = ini_getbool("Backup-Basic Settings", "auto_backup_enabled", 0, CONFIG_FILE_PATH);
         bool back_led_enabled = ini_getbool("Backup-Basic Settings", "back_led", 0, CONFIG_FILE_PATH);
+        bool high_speed = ini_getbool("Backup-WebDAV", "high_speed", 0, CONFIG_FILE_PATH);
 
         list->addItem(new tsl::elm::CategoryHeader("自动备份设置"));
 
@@ -778,6 +781,20 @@ public:
             return false;
         });
         list->addItem(back_led_enabledItem);
+
+        auto high_speedItem = new tsl::elm::ListItem("高速上传", high_speed ? "开" : "关");
+        high_speedItem->setClickListener([high_speedItem](u64 keys) {
+            if (keys & HidNpadButton_A) {
+                // 切换高速上传开关
+                bool new_high_speed = !ini_getbool("Backup-WebDAV", "high_speed", 0, CONFIG_FILE_PATH);
+                high_speedItem->setValue(new_high_speed ? "开" : "关");
+                ini_putl("Backup-WebDAV", "high_speed", new_high_speed ? 1 : 0, CONFIG_FILE_PATH);
+                g_restartItem->setValue("需要重启");
+                return true;
+            }
+            return false;
+        });
+        list->addItem(high_speedItem);
         
         frame->setContent(list);
         return frame;
