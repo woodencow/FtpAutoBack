@@ -223,6 +223,7 @@ static void ftp_progress_callback(void);
 // ========== 存档备份管理 ==========
 // 游戏信息获取与处理
 static Result get_current_tid(u64* tid);
+static bool update_user_uid_name(void);
 static void create_game_folder(u64 tid);
 static void generate_save_archive(u64 tid);
 
@@ -1518,7 +1519,6 @@ static Result get_current_tid(u64* tid) {
         pmdmntExit();
         return rc;
     }
-    
 
     u64 pid;
 
@@ -1538,6 +1538,103 @@ static Result get_current_tid(u64* tid) {
     pminfoExit();
     pmdmntExit();
     return rc;
+}
+
+/**
+ * 更新当前游戏用户的UID和用户名
+ * 
+ * 功能说明：
+ * 1. 获取最后打开的用户UID
+ * 2. 获取用户配置文件和昵称
+ * 3. 验证用户名有效性，提供后备方案
+ * 4. 更新全局变量 g_current_game_user_uid 和 g_current_game_user_name
+ * 
+ * 返回值：
+ * - true: 成功获取用户信息（包括使用后备方案）
+ * - false: 完全失败，无法获取任何用户信息
+ */
+static bool update_user_uid_name(void) {
+    // 清空全局变量
+    memset(&g_current_game_user_uid, 0, sizeof(g_current_game_user_uid));
+    memset(g_current_game_user_name, 0, sizeof(g_current_game_user_name));
+    // 尝试获取用户账户信息
+    Result user_rc = accountGetLastOpenedUser(&g_current_game_user_uid);
+    if (R_FAILED(user_rc)) {
+        log_file_fwrite("[ERROR]获取最后打开的用户信息失败: 0x%x", user_rc);
+        // 清空用户信息并设置安全的默认值
+        // 确保UID为空(0)，用户名设置为"Unknown_User"
+        memset(&g_current_game_user_uid, 0, sizeof(g_current_game_user_uid));
+        strcpy(g_current_game_user_name, "Unknown_User");
+        return false; // 完全失败
+    }
+
+    // 尝试获取用户配置文件
+    AccountProfile profile;
+    memset(&profile, 0, sizeof(profile));
+    user_rc = accountGetProfile(&profile, g_current_game_user_uid);
+    if (R_FAILED(user_rc)) {
+        log_file_fwrite("[ERROR]获取用户配置文件信息失败: 0x%x", user_rc);
+        // 确保UID有效后再使用
+        if (g_current_game_user_uid.uid[0] != 0 || g_current_game_user_uid.uid[1] != 0) {
+            snprintf(g_current_game_user_name, sizeof(g_current_game_user_name), 
+                        "User_%016lX", g_current_game_user_uid.uid[0]);
+        } else strcpy(g_current_game_user_name, "Unknown_User");
+        return true; 
+    }
+    
+    // 尝试获取用户配置文件基础信息
+    AccountProfileBase profilebase;
+    memset(&profilebase, 0, sizeof(profilebase));
+    user_rc = accountProfileGet(&profile, NULL, &profilebase);
+    if (R_FAILED(user_rc)) {
+        log_file_fwrite("[ERROR]获取用户配置文件基础信息失败: 0x%x", user_rc);
+        // 确保UID有效后再使用
+        if (g_current_game_user_uid.uid[0] != 0 || g_current_game_user_uid.uid[1] != 0) {
+            snprintf(g_current_game_user_name, sizeof(g_current_game_user_name), 
+                        "User_%016lX", g_current_game_user_uid.uid[0]);
+        } else {
+            strcpy(g_current_game_user_name, "Unknown_User");
+        }
+        // 确保profile被正确关闭
+        accountProfileClose(&profile);
+        return true; 
+    }
+
+    // 安全地复制用户名并进行验证
+    memset(g_current_game_user_name, 0, sizeof(g_current_game_user_name));
+    // 检查nickname是否有效且不为空
+    if (profilebase.nickname[0] != '\0' && strnlen(profilebase.nickname, sizeof(profilebase.nickname)) > 0) {
+        // 安全复制，确保不会溢出
+        size_t copy_len = strnlen(profilebase.nickname, sizeof(profilebase.nickname));
+        if (copy_len >= sizeof(g_current_game_user_name)) copy_len = sizeof(g_current_game_user_name) - 1;
+        // 复制到全局变量   
+        memcpy(g_current_game_user_name, profilebase.nickname, copy_len);
+        g_current_game_user_name[copy_len] = '\0';
+        
+        // 验证用户名是否包含有效字符
+        bool has_valid_chars = false;
+        for (size_t i = 0; i < copy_len; i++) {
+            char c = g_current_game_user_name[i];
+            if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')) {
+                has_valid_chars = true;
+                break;
+            }
+        }
+        
+        // 如果用户名没有有效字符，使用UID作为后备
+        if (!has_valid_chars) {
+            snprintf(g_current_game_user_name, sizeof(g_current_game_user_name), 
+                        "User_%016lX", g_current_game_user_uid.uid[0]);
+        }
+    } else {
+        // 如果nickname为空或无效，使用UID作为用户名
+        snprintf(g_current_game_user_name, sizeof(g_current_game_user_name), 
+                    "User_%016lX", g_current_game_user_uid.uid[0]);
+    }
+
+    // 确保profile被正确关闭
+    accountProfileClose(&profile);
+    return true; // 成功获取用户信息（包括后备方案）
 }
 
 static void create_game_folder(u64 tid) {
