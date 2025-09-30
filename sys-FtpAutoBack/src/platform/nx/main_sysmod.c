@@ -49,8 +49,8 @@
 #define UNIX_OFFSET 2208988800L
 #define NTP_DEFAULT_SERVER "ntp.ntsc.ac.cn"
 #define NTP_DEFAULT_PORT "123"
-#define NTP_DEFAULT_TIMEOUT 3
-#define NTP_FLAGS 0x23  // Flags 00|100|011 for li=0, vn=4, mode=3
+#define NTP_DEFAULT_TIMEOUT 5
+#define NTP_FLAGS 0x1B // LI=0, VN=3, Mode=3
 
 // 网络缓冲区定义
 #define TCP_TX_BUF_SIZE (1024 * 4)
@@ -224,6 +224,7 @@ static void ftp_progress_callback(void);
 // 游戏信息获取与处理
 static Result get_current_tid(u64* tid);
 static bool update_user_uid_name(void);
+static u64 Get_Current_Commit_Id(u64 current_tid);
 static void create_game_folder(u64 tid);
 static void generate_save_archive(u64 tid);
 
@@ -920,28 +921,28 @@ static time_t get_ntp_time(void) {
     int server_sock = -1;
     struct addrinfo hints, *servinfo = NULL;
     int status;
-    ntp_packet packet = {.flags = NTP_FLAGS};
+    ntp_packet packet;
     bool time_retrieved = false;
     
-    log_file_write("Starting NTP time synchronization...");
+    log_file_write("准备访问NPT服务器，同步时间");
     
     // 检查网络是否可用
     if (!is_network_available()) {
-        log_file_write("Network not available for NTP time sync");
+        log_file_write("网络不可用，无法同步时间");
         return 0;
     }
-    log_file_write("Network availability check passed");
+    log_file_write("网络可用，准备同步时间");
     
     // 确保标准套接字已初始化
     if (!g_standard_socket_initialized) {
-        log_file_write("Standard sockets not initialized, initializing...");
+        log_file_write("标准套接字未初始化，正在初始化...");
         if (R_FAILED(initialize_standard_sockets())) {
-            log_file_write("Failed to initialize standard sockets for NTP");
+            log_file_write("初始化标准套接字失败");
             return 0;
         }
-        log_file_write("Standard sockets initialized successfully");
+        log_file_write("标准套接字初始化成功");
     } else {
-        log_file_write("Standard sockets already initialized");
+        log_file_write("标准套接字已初始化");
     }
     
     // 设置地址信息
@@ -950,33 +951,33 @@ static time_t get_ntp_time(void) {
     hints.ai_socktype = SOCK_DGRAM;
     
     // 获取NTP服务器地址
-    log_file_write("Resolving NTP server address...");
+    log_file_write("正在解析NTP服务器地址...");
     if ((status = getaddrinfo(NTP_DEFAULT_SERVER, NTP_DEFAULT_PORT, &hints, &servinfo)) != 0) {
         char error_buf[256];
-        snprintf(error_buf, sizeof(error_buf), "NTP getaddrinfo failed: %s", gai_strerror(status));
+        snprintf(error_buf, sizeof(error_buf), "NTP getaddrinfo失败: %s", gai_strerror(status));
         log_file_write(error_buf);
         return 0;
     }
-    log_file_write("NTP server address resolved successfully");
+    log_file_write("NTP服务器地址解析成功");
     
     // 尝试连接到NTP服务器
     struct addrinfo* ap;
     for (ap = servinfo; ap != NULL; ap = ap->ai_next) {
-        log_file_write("Attempting to create socket...");
+        log_file_write("正在尝试创建套接字...");
         server_sock = socket(ap->ai_family, ap->ai_socktype, ap->ai_protocol);
         if (server_sock == -1) {
             char sock_error[64];
-            snprintf(sock_error, sizeof(sock_error), "Socket creation failed: %d", errno);
+            snprintf(sock_error, sizeof(sock_error), "创建套接字失败: %d", errno);
             log_file_write(sock_error);
             continue;
         }
-        log_file_write("Socket created successfully");
+        log_file_write("套接字创建成功");
         
         // 设置超时
         struct timeval tv = {.tv_sec = NTP_DEFAULT_TIMEOUT, .tv_usec = 0};
         if (setsockopt(server_sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) < 0) {
             char opt_error[64];
-            snprintf(opt_error, sizeof(opt_error), "Set SO_RCVTIMEO failed: %d", errno);
+            snprintf(opt_error, sizeof(opt_error), "设置SO_RCVTIMEO失败: %d", errno);
             log_file_write(opt_error);
             close(server_sock);
             server_sock = -1;
@@ -985,44 +986,48 @@ static time_t get_ntp_time(void) {
         
         if (setsockopt(server_sock, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv)) < 0) {
             char opt_error[64];
-            snprintf(opt_error, sizeof(opt_error), "Set SO_SNDTIMEO failed: %d", errno);
+            snprintf(opt_error, sizeof(opt_error), "设置SO_SNDTIMEO失败: %d", errno);
             log_file_write(opt_error);
             close(server_sock);
             server_sock = -1;
             continue;
         }
-        log_file_write("Socket options set successfully");
+        log_file_write("套接字选项设置成功");
+
+        // 构造标准NTP请求
+        memset(&packet, 0, sizeof(packet));
+        packet.flags = NTP_FLAGS;
         
         // 发送NTP请求
-        log_file_write("Sending NTP request...");
+        log_file_write("正在发送NTP请求...");
         ssize_t sent_bytes = sendto(server_sock, &packet, sizeof(packet), 0, ap->ai_addr, ap->ai_addrlen);
         if (sent_bytes == -1) {
             char send_error[64];
-            snprintf(send_error, sizeof(send_error), "Sendto failed: %d", errno);
+            snprintf(send_error, sizeof(send_error), "发送NTP请求失败: %d", errno);
             log_file_write(send_error);
             close(server_sock);
             server_sock = -1;
             continue;
         }
         char send_info[64];
-        snprintf(send_info, sizeof(send_info), "NTP request sent: %zd bytes", sent_bytes);
+        snprintf(send_info, sizeof(send_info), "已发送NTP请求: %zd 字节", sent_bytes);
         log_file_write(send_info);
         
         // 接收NTP响应
-        log_file_write("Waiting for NTP response...");
+        log_file_write("正在接收NTP响应...");
         struct sockaddr_storage server_addr;
         socklen_t server_addr_len = sizeof(server_addr);
         ssize_t recv_bytes = recvfrom(server_sock, &packet, sizeof(packet), 0, (struct sockaddr*)&server_addr, &server_addr_len);
         if (recv_bytes == -1) {
             char recv_error[64];
-            snprintf(recv_error, sizeof(recv_error), "Recvfrom failed: %d", errno);
+            snprintf(recv_error, sizeof(recv_error), "接收NTP响应失败: %d", errno);
             log_file_write(recv_error);
             close(server_sock);
             server_sock = -1;
             continue;
         }
         char recv_info[64];
-        snprintf(recv_info, sizeof(recv_info), "NTP response received: %zd bytes", recv_bytes);
+        snprintf(recv_info, sizeof(recv_info), "已接收NTP响应: %zd 字节", recv_bytes);
         log_file_write(recv_info);
         
         time_retrieved = true;
@@ -1034,7 +1039,7 @@ static time_t get_ntp_time(void) {
     }
     
     if (!time_retrieved) {
-        log_file_write("Failed to retrieve NTP time after all attempts");
+        log_file_write("所有尝试后仍未获取到NTP时间");
         if (server_sock != -1) {
             close(server_sock);
         }
@@ -1050,7 +1055,7 @@ static time_t get_ntp_time(void) {
     // 记录成功获取NTP时间
     char time_buf[128];
     struct tm* tm_info = localtime(&ntp_time);
-    strftime(time_buf, sizeof(time_buf), "NTP time retrieved: %Y-%m-%d %H:%M:%S", tm_info);
+    strftime(time_buf, sizeof(time_buf), "已成功获取NTP时间: %Y-%m-%d %H:%M:%S", tm_info);
     log_file_write(time_buf);
     
     return ntp_time;
@@ -1192,261 +1197,56 @@ static void auto_backup_thread(void* arg) {
     
     // 直接死循环监控TID变化
     while (!g_should_exit) {
-        // 每隔一段时间检测TID变化
-        static int tid_check_counter = 0;
-        tid_check_counter++;
-        if (tid_check_counter >= 1) { // 每次循环检测一次（大约1s检测一次）
-            tid_check_counter = 0;
-            
-            // 获取当前运行的游戏TID
-            if (R_SUCCEEDED(get_current_tid(&current_tid))) {
-                // 只在TID变化时输出日志
-                if (current_tid != g_previous_game_tid) {
-                    char debug_buf[128] = {0};
-                    snprintf(debug_buf, sizeof(debug_buf), "检测到当前运行的游戏 TID: %016lX", current_tid);
-                    log_file_write(debug_buf);
+
+        // 3种值，1正确的游戏TID，2未进入游戏时的TID，3获取失败TID=0
+        get_current_tid(&current_tid);
+
+        // 当进入游戏的时候(当前TID不是0且不是桌面的TID)
+        if (current_tid != 0 && current_tid != 0x0100000000001000ULL) {
+            // 更新全局的UID和NAME
+            update_user_uid_name();
+
+            // 检查当前用户UID是否有有效
+            if (accountUidIsValid(&g_current_game_user_uid)) {
+                // 获取当前游戏的CommitID
+                current_commit_id = Get_Current_Commit_Id(current_tid);
+                // 当CommitID发生变化时
+                if (previous_commit_id != 0 && current_commit_id != 0 && current_commit_id != previous_commit_id) {
+                    commit_change_count++;
+                    log_file_fwrite("CommitID 从 %016lX 变为 %016lX, 改变次数: %d", 
+                                    previous_commit_id, current_commit_id, commit_change_count);
                 }
-                if (current_tid != 0x0100000000001000ULL) {
-                        // 获取运行该TID游戏的用户UID和名称
-                        memset(&g_current_game_user_uid, 0, sizeof(g_current_game_user_uid));
-                        memset(g_current_game_user_name, 0, sizeof(g_current_game_user_name));
-                        
-                        Result user_rc = accountGetLastOpenedUser(&g_current_game_user_uid);
-                        if (R_SUCCEEDED(user_rc)) {
-                            AccountProfile profile;
-                            memset(&profile, 0, sizeof(profile));
-                            user_rc = accountGetProfile(&profile, g_current_game_user_uid);
-                            if (R_SUCCEEDED(user_rc)) {
-                                AccountProfileBase profilebase;
-                                memset(&profilebase, 0, sizeof(profilebase));
-                                user_rc = accountProfileGet(&profile, NULL, &profilebase);
-                                if (R_SUCCEEDED(user_rc)) {
-                                    // 安全地复制用户名并进行验证
-                                    memset(g_current_game_user_name, 0, sizeof(g_current_game_user_name));
-                                    
-                                    // 检查nickname是否有效且不为空
-                                    if (profilebase.nickname[0] != '\0' && strnlen(profilebase.nickname, sizeof(profilebase.nickname)) > 0) {
-                                        // 安全复制，确保不会溢出
-                                        size_t copy_len = strnlen(profilebase.nickname, sizeof(profilebase.nickname));
-                                        if (copy_len >= sizeof(g_current_game_user_name)) {
-                                            copy_len = sizeof(g_current_game_user_name) - 1;
-                                        }
-                                        memcpy(g_current_game_user_name, profilebase.nickname, copy_len);
-                                        g_current_game_user_name[copy_len] = '\0';
-                                        
-                                        // 验证用户名是否包含有效字符
-                                        bool has_valid_chars = false;
-                                        for (size_t i = 0; i < copy_len; i++) {
-                                            char c = g_current_game_user_name[i];
-                                            if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')) {
-                                                has_valid_chars = true;
-                                                break;
-                                            }
-                                        }
-                                        
-                                        // 如果用户名没有有效字符，使用UID作为后备
-                                        if (!has_valid_chars) {
-                                            snprintf(g_current_game_user_name, sizeof(g_current_game_user_name), 
-                                                     "User_%016lX", g_current_game_user_uid.uid[0]);
-                                        }
-                                    } else {
-                                        // 如果nickname为空或无效，使用UID作为用户名
-                                        snprintf(g_current_game_user_name, sizeof(g_current_game_user_name), 
-                                                 "User_%016lX", g_current_game_user_uid.uid[0]);
-                                    }
-                                } else {
-                                    log_file_fwrite("[USER_ERROR] 获取用户配置文件基础信息失败: 0x%x", user_rc);
-                                    // 确保UID有效后再使用
-                                    if (g_current_game_user_uid.uid[0] != 0 || g_current_game_user_uid.uid[1] != 0) {
-                                        snprintf(g_current_game_user_name, sizeof(g_current_game_user_name), 
-                                                 "User_%016lX", g_current_game_user_uid.uid[0]);
-                                    } else {
-                                        strcpy(g_current_game_user_name, "Unknown_User");
-                                    }
-                                }
-                                // 确保profile被正确关闭
-                                accountProfileClose(&profile);
-                            } else {
-                                log_file_fwrite("[USER_ERROR] 获取用户配置文件信息失败: 0x%x", user_rc);
-                                // 确保UID有效后再使用
-                                if (g_current_game_user_uid.uid[0] != 0 || g_current_game_user_uid.uid[1] != 0) {
-                                    snprintf(g_current_game_user_name, sizeof(g_current_game_user_name), 
-                                             "User_%016lX", g_current_game_user_uid.uid[0]);
-                                } else {
-                                    strcpy(g_current_game_user_name, "Unknown_User");
-                                }
-                            }
-                        } else {
-                            log_file_fwrite("[USER_ERROR] 获取最后打开的用户信息失败: 0x%x", user_rc);
-                            // 清空用户信息并设置安全的默认值
-                            memset(&g_current_game_user_uid, 0, sizeof(g_current_game_user_uid));
-                            strcpy(g_current_game_user_name, "Unknown_User");
-                        }
-                        
-                        // 只在TID变化时输出用户信息
-                        if (current_tid != g_previous_game_tid) {
-                            char user_info_buf[128] = {0};
-                            snprintf(user_info_buf, sizeof(user_info_buf), 
-                                     "User running TID %016lX - UID: %016lX%016lX, Name: %s", 
-                                     current_tid, 
-                                     g_current_game_user_uid.uid[0], 
-                                     g_current_game_user_uid.uid[1], 
-                                     g_current_game_user_name[0] ? g_current_game_user_name : "Unknown");
-                            log_file_write(user_info_buf);
-                        }
-                        
-                        // 获取对应的saveid并输出到日志
-                        if (accountUidIsValid(&g_current_game_user_uid)) {
-                            FsSaveDataFilter filter = {0};
-                            filter.filter_by_save_data_type = true;
-                            filter.attr.save_data_type = FsSaveDataType_Account;
-                            filter.filter_by_user_id = true;
-                            filter.attr.uid = g_current_game_user_uid;
-                            filter.filter_by_application_id = true;
-                            filter.attr.application_id = current_tid;
-                            
-                            FsSaveDataInfoReader reader;
-                            Result rc = fsOpenSaveDataInfoReaderWithFilter(&reader, FsSaveDataSpaceId_User, &filter);
-                            if (R_SUCCEEDED(rc)) {
-                                FsSaveDataInfo info;
-                                s64 total;
-                                rc = fsSaveDataInfoReaderRead(&reader, &info, 1, &total);
-                                if (R_SUCCEEDED(rc) && total > 0) {
-                                    // 只在TID变化时输出SaveID信息
-                                    if (current_tid != g_previous_game_tid) {
-                                        char saveid_buf[128] = {0};
-                                        snprintf(saveid_buf, sizeof(saveid_buf), 
-                                                 "SaveID for TID %016lX and user %s: %016lX", 
-                                                 current_tid, g_current_game_user_name[0] ? g_current_game_user_name : "Unknown", info.save_data_id);
-                                        log_file_write(saveid_buf);
-                                    }
-                                    
-                                    // 使用saveid获取存档额外数据
-                                    FsSaveDataExtraData extra_data;
-                                    memset(&extra_data, 0, sizeof(extra_data));
-                                    Result extra_rc = fsReadSaveDataFileSystemExtraData(&extra_data, sizeof(FsSaveDataExtraData), info.save_data_id);
-                                    if (R_SUCCEEDED(extra_rc)) {
-                                        // 只在TID变化或CommitID变化时输出SaveDataExtraData信息
-                                        if (current_tid != g_previous_game_tid || current_commit_id != previous_commit_id) {
-                                            char extra_buf[256] = {0};
-                                            snprintf(extra_buf, sizeof(extra_buf), 
-                                                     "SaveDataExtraData for TID %016lX - OwnerID: %016lX, Timestamp: %ld, Flags: 0x%08X, DataSize: %ld, JournalSize: %ld, CommitID: %016lX", 
-                                                     current_tid, extra_data.owner_id, extra_data.timestamp, extra_data.flags, 
-                                                     extra_data.data_size, extra_data.journal_size, extra_data.commit_id);
-                                            log_file_write(extra_buf);
-                                        }
-                                        
-                                        // 检测commitid变化
-                                        current_commit_id = extra_data.commit_id;
-                                        if (previous_commit_id != 0 && current_commit_id != previous_commit_id) {
-                                            commit_change_count++;
-                                            char commit_change_buf[128] = {0};
-                                            snprintf(commit_change_buf, sizeof(commit_change_buf), 
-                                                     "CommitID changed from %016lX to %016lX, change count: %d", 
-                                                     previous_commit_id, current_commit_id, commit_change_count);
-                                            log_file_write(commit_change_buf);
-                                        }
-                                        previous_commit_id = current_commit_id;
-                                    } else {
-                                        char error_buf[128] = {0};
-                                        snprintf(error_buf, sizeof(error_buf), 
-                                                 "读取游戏 %016lX 的 SaveDataExtraData 失败: 0x%x", 
-                                                 current_tid, extra_rc);
-                                        log_file_write(error_buf);
-                                    }
-                                } else {
-                                    char error_buf[256] = {0};
-                                    snprintf(error_buf, sizeof(error_buf), 
-                                             "读取游戏 %016lX 的 SaveID 失败: 0x%x", 
-                                             current_tid, rc);
-                                    log_file_write(error_buf);
-                                }
-                                // 确保reader被正确关闭
-                                fsSaveDataInfoReaderClose(&reader);
-                            } else {
-                                char error_buf[256] = {0};
-                                snprintf(error_buf, sizeof(error_buf), 
-                                         "打开游戏 %016lX 的 SaveDataInfoReader 失败: 0x%x", 
-                                         current_tid, rc);
-                                log_file_write(error_buf);
-                            }
-                        }
-                    }
-                // 检查TID是否发生变化（包括游戏关闭的情况）
-                if (current_tid != g_previous_game_tid) {
-                    // 如果当前游戏TID不是0x0100000000001000且不是g_previous_game_tid
-                    // 如果之前有游戏在运行（g_previous_game_tid != 0），则创建以前一个TID为名的文件夹并生成存档
-                    if (g_previous_game_tid != 0x0100000000001000ULL && (g_previous_game_tid & 0xFFFF000000000000ULL) == 0x0100000000000000ULL) {
-                        // 开启LED呼吸灯效果作为开始提示
-                        HidsysUniquePadId unique_pad_ids[2] = {0};
-                        s32 total_entries = 0;
-                        Result rc = hidsysGetUniquePadsFromNpad(HidNpadIdType_No1, unique_pad_ids, 2, &total_entries);
-                        
-                        if (R_FAILED(rc) || total_entries == 0) {
-                            // 尝试手持模式
-                            rc = hidsysGetUniquePadsFromNpad(HidNpadIdType_Handheld, unique_pad_ids, 2, &total_entries);
-                        }
-                        
-                        // 添加LED操作的错误处理
-                        bool led_enabled = false;
-                        if (R_SUCCEEDED(rc) && total_entries > 0) {
-                            for(s32 i = 0; i < total_entries; i++) {
-                                enableBreathingEffect(unique_pad_ids[i]);
-                                led_enabled = true;
-                            }
-                        }
-                        
-                        // 检查commitid变化次数，只有变化次数大于等于1时才创建存档备份
-                        if (commit_change_count >= 1) {
-                            char backup_log_buf[128] = {0};
-                            snprintf(backup_log_buf, sizeof(backup_log_buf), 
-                                     "创建游戏 %016lX 的存档备份 - CommitID 变化次数: %d", 
-                                     g_previous_game_tid, commit_change_count);
-                            log_file_write(backup_log_buf);
-                            
-                            // 检测到存档变化时发送Ultrahand通知
-                            create_ultrahand_notification("游戏 %016lX 的存档已变化，准备备份", 1);
-                            
-                            // 添加异常处理包装
-                            generate_save_archive(g_previous_game_tid);
-                        } else {
-                            char skip_log_buf[128] = {0};
-                            snprintf(skip_log_buf, sizeof(skip_log_buf), 
-                                     "跳过游戏 %016lX 的存档备份 - CommitID 未变化 (变化次数: %d)", 
-                                     g_previous_game_tid, commit_change_count);
-                            log_file_write(skip_log_buf);
-                        }
-                        
-                        // 关闭LED效果作为完成提示，只有在成功开启时才关闭
-                        if (led_enabled && R_SUCCEEDED(rc) && total_entries > 0) {
-                            for(s32 i = 0; i < total_entries; i++) {
-                                disableBreathingEffect(unique_pad_ids[i]);
-                            }
-                        }
-                        
-                        // 记录日志
-                        char log_buf[128] = {0};
-                        snprintf(log_buf, sizeof(log_buf), "游戏 %016lX 的 TID 已变化，从 %016lX 到 %016lX", g_previous_game_tid, current_tid);
-                        log_file_write(log_buf);
-                    }
-                    // 更新g_previous_game_tid
-                    g_previous_game_tid = current_tid;
-                    
-                    // 重置commitid相关变量
-                    previous_commit_id = 0;
-                    current_commit_id = 0;
-                    commit_change_count = 0;
-                    
-                    char reset_log_buf[128] = {0};
-                    snprintf(reset_log_buf, sizeof(reset_log_buf), 
-                             "重置游戏 %016lX 的 CommitID 跟踪变量", 
-                             current_tid);
-                    log_file_write(reset_log_buf);
-                }
+                // 记录当前CommitID为下一次比较的基础
+                previous_commit_id = current_commit_id;
             }
+
         }
-        
-        // 优化的等待逻辑：添加套接字状态检查
+
+        // 当TID发生了变化，且不是从桌面进入别的应用，而是从别的应用切换到别的应用(包括切换到桌面)
+        if (current_tid != 0 && current_tid != g_previous_game_tid ) {
+            log_file_fwrite("检测到新的 TID: %016lX，旧的 TID: %016lX", current_tid, g_previous_game_tid);
+            // 检测是否是有效的游戏ID
+            if (g_previous_game_tid != 0x0100000000001000ULL && (g_previous_game_tid & 0xFFFF000000000000ULL) == 0x0100000000000000ULL) {
+                // 检查commitid变化次数
+                if (commit_change_count >= 1) {
+                    // 生成存档
+                    generate_save_archive(g_previous_game_tid);
+                    log_file_fwrite("创建游戏 %016lX 的存档备份 - CommitID 变化次数: %d", g_previous_game_tid, commit_change_count);
+                } 
+                else {
+                    log_file_fwrite("跳过游戏 %016lX 的存档备份 - CommitID 未变化 (变化次数: %d)", g_previous_game_tid, commit_change_count);
+                }
+                
+            }
+            // 重置相关变量，从头开始
+            g_previous_game_tid = current_tid;
+            previous_commit_id = 0;
+            current_commit_id = 0;
+            commit_change_count = 0;
+            log_file_fwrite("重置游戏 %016lX 的 CommitID 跟踪变量", current_tid);
+
+        }
+
         // 如果检测到WebDAV握手正在进行，等待其完成
         if (g_webdav_handshake_in_progress) {
             log_file_write("检测到 WebDAV 握手正在进行，等待完成...");
@@ -1455,36 +1255,19 @@ static void auto_backup_thread(void* arg) {
                 svcSleepThread(1000000000); // 1秒延迟
                 wait_count++;
             }
-            
-            if (g_webdav_handshake_in_progress) {
-                log_file_write("警告: WebDAV 握手超时，强制检查套接字状态");
-                // 强制检查套接字状态
-                if (!g_bsd_initialized || !is_network_available()) {
-                    log_file_write("警告: BSD 套接字未就绪，尝试重新初始化");
-                    Result reinit_rc = initialize_bsd_sockets();
-                    if (R_SUCCEEDED(reinit_rc)) {
-                        g_webdav_handshake_in_progress = false;
-                        log_file_write("BSD 套接字已成功重新初始化，恢复 TID 监控");
-                    }
-                }
-            } else {
-                log_file_write("WebDAV 握手已完成，恢复 TID 监控");
-            }
+            if (g_webdav_handshake_in_progress) log_file_write("警告: WebDAV 握手超时，强制检查套接字状态");
         }
         
-        // 额外的套接字状态验证
-        if (!g_bsd_initialized) {
-            log_file_write("警告: BSD 套接字未初始化，尝试初始化");
+        // 无论是否正在进行WebDAV握手，都检查套接字状态
+        if (!g_bsd_initialized || !is_network_available()) {
             Result init_rc = initialize_bsd_sockets();
-            if (R_FAILED(init_rc)) {
-                char error_buf[128];
-                snprintf(error_buf, sizeof(error_buf), "警告: 初始化 BSD 套接字失败: 0x%x", init_rc);
-                log_file_write(error_buf);
-            }
+            if (R_FAILED(init_rc)) log_file_fwrite("警告: 初始化 BSD 套接字失败: 0x%x", init_rc);
+            else log_file_write("警告: BSD 套接字未初始化，已重新初始化！");
         }
         
         // 添加延迟避免CPU占用过高
         svcSleepThread(1000000000); // 1秒延迟
+
     }
 }
 
@@ -1634,8 +1417,71 @@ static bool update_user_uid_name(void) {
 
     // 确保profile被正确关闭
     accountProfileClose(&profile);
-    log_file_fwrite("[INFO]获取用户 %s (UID: %016lX)", g_current_game_user_name, g_current_game_user_uid.uid[0]);
     return true; // 成功获取用户信息（包括后备方案）
+}
+
+// 获取指定游戏和用户的当前CommitID
+// 参数: application_id - 游戏的TID, uid - 用户ID
+// 返回: 成功时返回CommitID，失败时返回0
+static u64 Get_Current_Commit_Id(u64 current_tid) {
+    
+    // 构建查询过滤器
+    FsSaveDataFilter filter = {0};
+    filter.filter_by_save_data_type = true;
+    filter.attr.save_data_type = FsSaveDataType_Account;
+    filter.filter_by_user_id = true;
+    filter.attr.uid = g_current_game_user_uid;
+    filter.filter_by_application_id = true;
+    filter.attr.application_id = current_tid;
+    // 初始化当前CommitID为0
+    u64 current_commit_id = 0;
+
+    // 初始化读取器
+    FsSaveDataInfoReader reader;
+    Result rc = fsOpenSaveDataInfoReaderWithFilter(&reader, FsSaveDataSpaceId_User, &filter);
+    if (R_FAILED(rc)) {
+        log_file_fwrite("打开游戏 %016lX 的 SaveDataInfoReader 失败: 0x%x", current_tid, rc);
+        return 0;
+    }
+
+    // 读取SaveDataInfo
+    FsSaveDataInfo info;
+    s64 total;
+    rc = fsSaveDataInfoReaderRead(&reader, &info, 1, &total);
+    if (R_FAILED(rc) || total <= 0) {
+        log_file_fwrite("读取游戏 %016lX 的 SaveID 失败: 0x%x", current_tid, rc);
+        fsSaveDataInfoReaderClose(&reader);
+        return 0;
+    }
+
+    // 确保这个游戏发生了改变的时候输出日志
+    if (current_tid != g_previous_game_tid){
+        log_file_fwrite("游戏 %016lX 用户 %s 的 SaveID: %016lX", current_tid, 
+                        g_current_game_user_name[0] ? g_current_game_user_name : "Unknown", info.save_data_id);
+    }
+
+    // 使用saveid获取存档额外数据
+    FsSaveDataExtraData extra_data;
+    memset(&extra_data, 0, sizeof(extra_data));
+    Result extra_rc = fsReadSaveDataFileSystemExtraData(&extra_data, sizeof(FsSaveDataExtraData), info.save_data_id);
+    if (R_FAILED(extra_rc)) {
+        log_file_fwrite("读取游戏 %016lX 的 SaveDataExtraData 失败: 0x%x", current_tid, extra_rc);
+        fsSaveDataInfoReaderClose(&reader);
+        return 0;
+    }
+
+    // 从额外数据中提取CommitID
+    current_commit_id = extra_data.commit_id;
+    // 确保reader被正确关闭
+    fsSaveDataInfoReaderClose(&reader);
+
+    // 确保这个游戏发生了改变的时候输出日志
+    if (current_tid != g_previous_game_tid){
+        log_file_fwrite("读取游戏 %016lX 的 CommitID ：%016lX", current_tid, current_commit_id);
+    }
+
+    return current_commit_id;
+
 }
 
 static void create_game_folder(u64 tid) {
