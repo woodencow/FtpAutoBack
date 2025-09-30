@@ -415,7 +415,7 @@ public:
                     {"\n• ", TextColors::GRAY, 18},
                     {"开启后会显示各种快捷入口", TextColors::WHITE, 18},
 
-                    {"\n\nLED闪烁:", TextColors::CYAN, 20},
+                    {"\n\nLED提示:", TextColors::CYAN, 20},
                     {"\n• ", TextColors::GRAY, 18},
                     {"开启后会在传输时闪烁LED", TextColors::WHITE, 18},
 
@@ -516,7 +516,7 @@ public:
 
         
         bool ledEnabled = ini_getbool("Ftp-Basic Settings", "led", 0, CONFIG_FILE_PATH);
-        auto ledEnabledItem = new tsl::elm::ListItem("LED闪烁", ledEnabled ? "开" : "关");
+        auto ledEnabledItem = new tsl::elm::ListItem("LED提示", ledEnabled ? "开" : "关");
         ledEnabledItem->setClickListener([ledEnabledItem](u64 keys) {
             if (keys & HidNpadButton_A) {
                 // 切换LED闪烁状态
@@ -665,6 +665,10 @@ public:
                     {"\n• ", TextColors::GRAY, 18},
                     {"用来打开关闭自动上传到网盘的开关", TextColors::WHITE, 18},
 
+                    {"\n\nLED提示:", TextColors::CYAN, 20},
+                    {"\n• ", TextColors::GRAY, 18},
+                    {"开启后会在备份和上传时闪烁LED", TextColors::WHITE, 18},
+
                     {"\n\n重启插件:", TextColors::CYAN, 20},
                     {"\n• ", TextColors::GRAY, 18},
                     {"修改设置后，需要重启插件生效", TextColors::WHITE, 18},
@@ -698,6 +702,7 @@ public:
         bool skip_ascii_convert = ini_getbool("Common", "skip_ascii_convert", 0, CONFIG_FILE_PATH);
         bool WebDAV_enabled = ini_getbool("Backup-WebDAV", "WebDAV_enabled", 0, CONFIG_FILE_PATH);
         bool auto_backup = ini_getbool("Backup-Basic Settings", "auto_backup_enabled", 0, CONFIG_FILE_PATH);
+        bool back_led_enabled = ini_getbool("Backup-Basic Settings", "back_led", 0, CONFIG_FILE_PATH);
 
         list->addItem(new tsl::elm::CategoryHeader("自动备份设置"));
 
@@ -759,7 +764,21 @@ public:
             return false;
         });
         list->addItem(WebDAV_enabledItem);
-       
+        
+        auto back_led_enabledItem = new tsl::elm::ListItem("LED提示", back_led_enabled ? "开" : "关");
+        back_led_enabledItem->setClickListener([back_led_enabledItem](u64 keys) {
+            if (keys & HidNpadButton_A) {
+                // 切换备份LED提示开关
+                bool new_back_led_enabled = !ini_getbool("Backup-Basic Settings", "back_led", 0, CONFIG_FILE_PATH);
+                back_led_enabledItem->setValue(new_back_led_enabled ? "开" : "关");
+                ini_putl("Backup-Basic Settings", "back_led", new_back_led_enabled ? 1 : 0, CONFIG_FILE_PATH);
+                g_restartItem->setValue("需要重启");
+                return true;
+            }
+            return false;
+        });
+        list->addItem(back_led_enabledItem);
+        
         frame->setContent(list);
         return frame;
     }
