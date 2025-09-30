@@ -3831,7 +3831,7 @@ bool Show_Back_LED() {
 void Close_Back_LED() {
 
     // 如果没配置开启，则直接返回
-    if (!g_back_led_enabled) return false;
+    if (!g_back_led_enabled) return;
 
     // 获取手柄设备信息
     HidsysUniquePadId unique_pad_ids[2] = {0};
