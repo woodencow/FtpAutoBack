@@ -175,6 +175,8 @@ void vfs_nx_add_device(const char* name, enum VFS_TYPE type);
 
 Result get_app_name(u64 app_id, NcmContentId* id, struct AppName* name);
 Result get_app_name2(u64 app_id, NcmContentMetaDatabase* db, NcmContentStorage* cs, NcmContentId* id, struct AppName* name);
+Result get_app_en_name(u64 app_id, NcmContentId* id, struct AppName* name);
+Result get_app_en_name2(u64 app_id, NcmContentMetaDatabase* db, NcmContentStorage* cs, NcmContentId* id, struct AppName* name);
 
 // taken from nxdumptool.
 void utilsReplaceIllegalCharacters(char *str, bool ascii_only);

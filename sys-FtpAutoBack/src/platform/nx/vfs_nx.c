@@ -461,6 +461,117 @@ Result get_app_name(u64 app_id, NcmContentId* id, struct AppName* name) {
 
         // 尝试从当前存储获取应用程序名称
         if (R_SUCCEEDED(rc = get_app_name2(app_id, &g_db[i], &g_cs[i], id, name))) {
+            
+            return rc;
+        }
+    }
+
+    return rc;
+}
+
+
+// 供存档备份系统用的，只获取英文名，如果英文名不对，就返回app_id
+Result get_app_en_name2(u64 app_id, NcmContentMetaDatabase* db, NcmContentStorage* cs, NcmContentId* id, struct AppName* name) {
+    Result rc;
+    NcmContentMetaKey key;
+    s32 entries_total;
+    s32 entries_written;
+    
+    // 从数据库中查找应用程序的元数据
+    if (R_FAILED(rc = ncmContentMetaDatabaseList(db, &entries_total, &entries_written, &key, 1, NcmContentMetaType_Application, app_id, 0, UINT64_MAX, NcmContentInstallType_Full))) {
+        return rc;
+    }
+
+    // 获取控制数据的内容ID
+    if (R_FAILED(rc = ncmContentMetaDatabaseGetContentIdByType(db, id, &key, NcmContentType_Control))) {
+        return rc;
+    }
+
+    // 获取内容存储路径
+    char nxpath[FS_MAX_PATH];
+    if (R_FAILED(rc = ncmContentStorageGetPath(cs, nxpath, sizeof(nxpath), id))) {
+        return rc;
+    }
+
+    // 打开控制数据文件系统
+    FsFileSystem fs;
+    if (R_FAILED(rc = fsOpenFileSystemWithId(&fs, key.id, FsFileSystemType_ContentControl, nxpath, FsContentAttributes_All))) {
+        return rc;
+    }
+
+    // 打开control.nacp文件
+    strcpy(nxpath, "/control.nacp");
+    FsFile file;
+    if (R_FAILED(rc = fsFsOpenFile(&fs, nxpath, FsOpenMode_Read, &file))) {
+        fsFsClose(&fs);
+        return rc;
+    }
+
+    // 初始化名称字符串
+    name->str[0] = '\0';
+    
+    // 只获取英文名称 - 优先美式英语，其次英式英语
+    u64 bytes_read;
+    s64 off;
+    
+    // 首先尝试美式英语 (索引0)
+    off = 0 * sizeof(NacpLanguageEntry);
+    rc = fsFileRead(&file, off, name->str, sizeof(name->str), 0, &bytes_read);
+    
+    // 如果美式英语没有名称，尝试英式英语 (索引1)
+    if (name->str[0] == '\0') {
+        off = 1 * sizeof(NacpLanguageEntry);
+        rc = fsFileRead(&file, off, name->str, sizeof(name->str), 0, &bytes_read);
+    }
+
+    // 关闭文件和文件系统
+    fsFileClose(&file);
+    fsFsClose(&fs);
+    return rc;
+}
+
+// 供存档备份系统用的，只获取英文名
+Result get_app_en_name(u64 app_id, NcmContentId* id, struct AppName* name) {
+    Result rc;
+
+    // 按常用程度排序的存储ID列表
+    static const NcmStorageId ids[NCM_SIZE] = {
+        NcmStorageId_SdCard,        // SD卡存储
+        NcmStorageId_BuiltInUser,   // 内置用户存储
+    };
+
+    // 遍历所有存储位置
+    for (int i = 0; i < NCM_SIZE; i++) {
+        // 如果NCM内容存储服务未激活，则打开它
+        // 在这里而不是启动时打开是因为NCM服务在启动时可能还未准备好
+        if (!serviceIsActive(&g_cs[i].s)) {
+            if (R_FAILED(rc = ncmOpenContentStorage(&g_cs[i], ids[i]))) {
+                log_file_fwrite("failed: ncmOpenContentStorage() 0x%X\n", rc);
+                continue;
+            }
+        }
+
+        // 如果NCM内容元数据数据库未激活，则打开它
+        if (!serviceIsActive(&g_db[i].s)) {
+            if (R_FAILED(rc = ncmOpenContentMetaDatabase(&g_db[i], ids[i]))) {
+                log_file_fwrite("failed: ncmOpenContentMetaDatabase() 0x%X\n", rc);
+                continue;
+            }
+        }
+
+        // 尝试从当前存储获取应用程序名称
+        if (R_SUCCEEDED(rc = get_app_en_name2(app_id, &g_db[i], &g_cs[i], id, name))) {
+            // 检查获取到的名称是否为英文（只包含ASCII字符）
+            if (name->str[0] != '\0') {
+                for (size_t j = 0; j < strlen(name->str); j++) {
+                    unsigned char c = (unsigned char)name->str[j];
+                    // ASCII字符范围：32-126（可打印字符）
+                    if (c < 32 || c > 126) {
+                        snprintf(name->str, sizeof(name->str), "%016lX", app_id);
+                        break;
+                    }
+                }
+            }
             return rc;
         }
     }
