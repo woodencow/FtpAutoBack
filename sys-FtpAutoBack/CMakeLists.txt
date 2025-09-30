@@ -263,6 +263,7 @@ ftp_set_compile_definitions(ftpsrv)
             src/platform/nx/custom_commands.c                         # 自定义FTP命令
             src/platform/nx/utils.c                                   # Switch平台工具函数
             src/log/log.c                                              # 日志记录功能
+            src/log/backuplog.c
         )
 
         # 为ftpsrv设置Switch平台特定的编译定义

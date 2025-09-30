@@ -6,6 +6,7 @@
 #include <ftpsrv_vfs.h>
 #include "utils.h"
 #include "log/log.h"
+#include "log/backuplog.h"
 #include "custom_commands.h"
 #include "vfs_nx.h"
 #include "vfs/vfs_nx_save.h"
@@ -411,6 +412,7 @@ void __appExit(void) {
     
     vfs_nx_exit();
     log_file_exit();
+    backuplog_exit();
     hidsysExit();
     nifmExit();
     setExit();
@@ -434,6 +436,8 @@ static bool initialize_log(void) {
     bool log_enabled = ini_getbool("Common", "log", 0, INI_PATH);
     if (log_enabled) {
         log_file_init(LOG_PATH, "日志系统初始化完毕！");
+        backuplog_init();
+        log_file_fwrite("备份记录初始化完成");
     }
     return log_enabled;
 }
@@ -1740,16 +1744,25 @@ static void generate_save_archive(u64 tid) {
                             }
                         }
                         
+                        // 使用get_app_log_name获取游戏名
+                        NcmContentId content_id = {0};
+                        struct AppName app_name = {0};
+                        get_app_log_name(tid, &content_id, &app_name);
+
                         if (R_SUCCEEDED(rc)) {
                             log_file_fwrite("已成功创建用户 %s 的存档元数据: %s", username, final_path);
                             // 标记本地存档生成成功
                             local_backup_success = true;
                             // 备份完成时发送Ultrahand通知
                             create_ultrahand_notification("存档元数据备份已完成", 1);
+                            // 写入备份记录: "保存成功|游戏名|用户名|时间戳"
+                            backuplog_fwrite("保存成功|%s|%s|%s", app_name.str, username, latest_timestamp);
                         } else {
                             log_file_fwrite("警告: 无法流式传输用户 %s 的存档元数据到SD卡: 0x%x", username, rc);
                             // 备份失败时发送Ultrahand通知
                             create_ultrahand_notification("存档元数据备份失败", 2);
+                            // 写入备份记录: "保存失败|游戏名|用户名|时间戳"
+                            backuplog_fwrite("保存失败|%s|%s|%s", app_name.str, username, latest_timestamp);
                         }
                     } else {
                         log_file_write("警告: 无法获取SD卡文件系统");
@@ -3619,6 +3632,9 @@ static Result stream_zip_to_webdav(const char* local_zip_path, u64 tid, AccountU
             // WebDAV上传成功时发送Ultrahand通知
             create_ultrahand_notification("WebDAV 上传成功", 1);
             
+            // 写入备份记录: "上传成功|游戏名|用户名|时间戳" (2表示WebDAV上传成功)
+            backuplog_fwrite("上传成功|%s|%s|%s", sanitized_title, username, ntp_timestamp);
+            
             result = 0;
             
             // 注意：WebDAV存档数量管理已移到上传前执行，与本地存档保持一致时序
@@ -3627,6 +3643,10 @@ static Result stream_zip_to_webdav(const char* local_zip_path, u64 tid, AccountU
             log_file_write(debug_buf);
             // WebDAV上传失败时发送Ultrahand通知
             create_ultrahand_notification("WebDAV 上传失败", 2);
+            
+            // 写入备份记录: "上传失败|游戏名|用户名|时间戳" (3表示WebDAV上传失败)
+            backuplog_fwrite("上传失败|%s|%s|%s", sanitized_title, username, ntp_timestamp);
+            
             result = -1;
         }
     } else {
@@ -3638,6 +3658,10 @@ static Result stream_zip_to_webdav(const char* local_zip_path, u64 tid, AccountU
         log_file_write(debug_buf);
         // WebDAV上传失败时发送Ultrahand通知
         create_ultrahand_notification("WebDAV 上传失败", 2);
+        
+        // 写入备份记录: "上传失败|游戏名|用户名|时间戳" (3表示WebDAV上传失败)
+        backuplog_fwrite("上传失败|%s|%s|%s", sanitized_title, username, ntp_timestamp);
+        
         result = -1;
     }
     

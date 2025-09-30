@@ -16,7 +16,7 @@ AboutTab::AboutTab()
     // Subtitle
     brls::Label *subTitle = new brls::Label(
         brls::LabelStyle::REGULAR,
-        "Switch自动备份插件，由塔菲的神必团队开发", 
+        "Switch自动备份插件，由塔菲的神必团队开发\nHahappify & TOM SON & 葡萄糖酸菜鱼\n感谢ITotalJustice的FTP-SRV和switch开源社区的技术基础",
         true
     );
     subTitle->setHorizontalAlign(NVG_ALIGN_CENTER);
@@ -24,10 +24,10 @@ AboutTab::AboutTab()
 
 
     // Links
-    this->addView(new brls::Header("相关链接"));
+    this->addView(new brls::Header(""));
     brls::Label *links = new brls::Label(
         brls::LabelStyle::DESCRIPTION,
-        "作者 : B站 Hahappify\n",
+        "\n",
         true
     );
     this->addView(links);
