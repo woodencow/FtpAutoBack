@@ -851,8 +851,8 @@ static Result initialize_standard_sockets(void) {
     static const SocketInitConfig webdav_socket_config = {
         .tcp_tx_buf_size = 0x800,        // 2KB (保持)
         .tcp_rx_buf_size = 0x800,        // 2KB (保持)
-        .tcp_tx_buf_max_size = 0x8000,   // 32KB (优化: 148KB -> 32KB)
-        .tcp_rx_buf_max_size = 0x8000,   // 32KB (优化: 148KB -> 32KB)
+        .tcp_tx_buf_max_size = 0x8000,   // 32KB (优化: 148KB -> 32KB) 0x20000
+        .tcp_rx_buf_max_size = 0x8000,   // 32KB (优化: 148KB -> 32KB) 0x20000
         .udp_tx_buf_size = 0x1000,       // 4KB (优化: 32KB -> 4KB)
         .udp_rx_buf_size = 0x1000,       // 4KB (优化: 32KB -> 4KB)
         .sb_efficiency = 1,
@@ -3593,6 +3593,10 @@ static Result stream_zip_to_webdav(const char* local_zip_path, u64 tid, AccountU
     // 设置CURL选项 - 修复CURL配置冲突
     curl_easy_setopt(curl, CURLOPT_URL, url);
     curl_easy_setopt(curl, CURLOPT_UPLOAD, 1L);
+
+    // 设置64KB的CURL缓冲区
+    // curl_easy_setopt(curl, CURLOPT_BUFFERSIZE, 65536L);
+
     // 移除PUT选项，避免与UPLOAD冲突
     // curl_easy_setopt(curl, CURLOPT_PUT, 1L);
     curl_easy_setopt(curl, CURLOPT_READFUNCTION, webdav_upload_read_callback);
