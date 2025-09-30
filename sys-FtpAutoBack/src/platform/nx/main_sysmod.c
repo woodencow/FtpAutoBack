@@ -1619,12 +1619,10 @@ static void generate_save_archive(u64 tid) {
     if (tid == 0) return;
     
     // 添加调试日志：开始生成存档
-    char debug_buf[256] = {0};
-    snprintf(debug_buf, sizeof(debug_buf), "已开始为 TID: %016lX 生成存档", tid);
-    log_file_write(debug_buf);
+    log_file_fwrite("准备为 TID: %016lX 生成存档", tid);
     
     // 备份开始时发送Ultrahand通知
-    create_ultrahand_notification("已开始为 TID: %016lX 生成存档", 1);
+    create_ultrahand_notification("准备为 TID: %016lX 生成存档", 1);
     
     // 标记是否成功生成本地存档
     bool local_backup_success = false;
