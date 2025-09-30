@@ -128,6 +128,7 @@ static struct FtpSrvConfig g_ftpsrv_config = {0};
 static bool g_led_enabled = false;
 static bool g_back_led_enabled = false;
 static volatile bool g_should_exit = false;
+static u32 g_webdav_tcp_buffer_max_size = 0;
 
 // 用户信息相关全局变量
 static AccountUid g_current_game_user_uid = {0};
@@ -659,16 +660,23 @@ static bool initialize_Curl(void) {
 static bool initialize_WebDAV(void) {
     // 读取WebDAV配置 
     webdav_config.enabled = ini_getbool("Backup-WebDAV", "WebDAV_enabled", 0, INI_PATH);
-    ini_gets("Backup-WebDAV", "origin", "", webdav_config.origin, sizeof(webdav_config.origin), INI_PATH);
-    ini_gets("Backup-WebDAV", "basepath", "", webdav_config.basepath, sizeof(webdav_config.basepath), INI_PATH);
-    ini_gets("Backup-WebDAV", "username", "", webdav_config.username, sizeof(webdav_config.username), INI_PATH);
-    ini_gets("Backup-WebDAV", "password", "", webdav_config.password, sizeof(webdav_config.password), INI_PATH);
-
+    
     // 初始化WebDAV服务
     if (!webdav_config.enabled) {
         log_file_write("WebDAV服务已禁用，");
         return false;
     }
+
+    ini_gets("Backup-WebDAV", "origin", "", webdav_config.origin, sizeof(webdav_config.origin), INI_PATH);
+    ini_gets("Backup-WebDAV", "basepath", "", webdav_config.basepath, sizeof(webdav_config.basepath), INI_PATH);
+    ini_gets("Backup-WebDAV", "username", "", webdav_config.username, sizeof(webdav_config.username), INI_PATH);
+    ini_gets("Backup-WebDAV", "password", "", webdav_config.password, sizeof(webdav_config.password), INI_PATH);
+
+    // 读取高速上传配置
+    bool high_speed = ini_getbool("Backup-WebDAV", "high_speed", 0, INI_PATH);
+
+    // 根据high_speed值动态设置缓冲区大小
+    g_webdav_tcp_buffer_max_size = high_speed ? 0x20000 : 0x8000;  // true=128KB, false=32KB
 
     char webdav_log_buf[128];
     snprintf(webdav_log_buf, sizeof(webdav_log_buf), "WebDAV服务已启用。地址: %s, 路径: %s, 用户: %s", webdav_config.origin, webdav_config.basepath, webdav_config.username);
@@ -852,13 +860,14 @@ static Result initialize_standard_sockets(void) {
         return 0; // 已经初始化
     }
     
-    static const SocketInitConfig webdav_socket_config = {
-        .tcp_tx_buf_size = 0x800,        // 2KB (保持)
-        .tcp_rx_buf_size = 0x800,        // 2KB (保持)
-        .tcp_tx_buf_max_size = 0x8000,   // 32KB (优化: 148KB -> 32KB) 0x20000
-        .tcp_rx_buf_max_size = 0x8000,   // 32KB (优化: 148KB -> 32KB) 0x20000
-        .udp_tx_buf_size = 0x1000,       // 4KB (优化: 32KB -> 4KB)
-        .udp_rx_buf_size = 0x1000,       // 4KB (优化: 32KB -> 4KB)
+    // 运行时初始化socket配置，使用动态缓冲区大小
+    SocketInitConfig webdav_socket_config = {
+        .tcp_tx_buf_size = 0x800,                               // 2KB (保持)
+        .tcp_rx_buf_size = 0x800,                               // 2KB (保持)
+        .tcp_tx_buf_max_size = g_webdav_tcp_buffer_max_size,   // 根据high_speed值动态设置缓冲区大小，true=128KB, false=32KB
+        .tcp_rx_buf_max_size = g_webdav_tcp_buffer_max_size,   // 根据high_speed值动态设置缓冲区大小，true=128KB, false=32KB
+        .udp_tx_buf_size = 0x1000,                              // 4KB (优化: 32KB -> 4KB)
+        .udp_rx_buf_size = 0x1000,                              // 4KB (优化: 32KB -> 4KB)
         .sb_efficiency = 1,
     };
     
