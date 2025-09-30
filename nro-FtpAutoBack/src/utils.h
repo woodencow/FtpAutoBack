@@ -7,6 +7,17 @@
 #define CONFIG_FILE "sdmc:/config/ftpsrv/config.ini"
 
 namespace utils {
+    
+    /**
+     * 备份记录结构体
+     */
+    typedef struct {
+        std::string status;     // 状态
+        std::string gameName;   // 游戏名
+        std::string userName;   // 用户名
+        std::string time;       // 时间
+    } BackupLogEntry;
+
     /**
      * 读取INI配置文件中指定节和选项的值
      * @param sectionName 节名称
@@ -29,6 +40,13 @@ namespace utils {
      * 重启自动备份功能
      */
     void restartAutoBackup();
+    
+    /**
+     * 解析备份日志条目字符串
+     * @param line 格式为 "状态|游戏名|用户名|时间" 的字符串
+     * @return 解析后的BackupLogEntry结构体
+     */
+    BackupLogEntry parseBackupLogEntry(const std::string& line);
 
 }
 
