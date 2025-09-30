@@ -1515,8 +1515,8 @@ static void create_game_folder(u64 tid) {
     // 获取游戏名称
     NcmContentId content_id = {0};
     struct AppName app_name = {0};
-    get_app_name(tid, &content_id, &app_name);
-    
+    get_app_en_name(tid, &content_id, &app_name);
+
     // 清理游戏名称中的非法字符
     memset(sanitized_name, 0, sizeof(sanitized_name));
     if (strlen(app_name.str) > 0) {
@@ -1524,13 +1524,14 @@ static void create_game_folder(u64 tid) {
         sanitize_filename(sanitized_name);
     }
     
-    // 如果无法获取游戏名称，则使用TID作为后备
     folder_name = sanitized_name;
     memset(tid_str, 0, sizeof(tid_str));
     if (strlen(sanitized_name) == 0) {
         snprintf(tid_str, sizeof(tid_str), "%016lX", tid);
         folder_name = tid_str;
     }
+
+    log_file_fwrite("准备创建游戏文件夹 %s", folder_name);
     
     FsFileSystem* sdmc_fs = fsdev_wrapGetDeviceFileSystem("sdmc");
     if (sdmc_fs == NULL) {
@@ -1632,8 +1633,7 @@ static void generate_save_archive(u64 tid) {
     
     // 只处理当前运行游戏的用户
     if (g_current_game_user_uid.uid[0] == 0 && g_current_game_user_uid.uid[1] == 0) {
-        snprintf(debug_buf, sizeof(debug_buf), "警告: 未检测到当前运行游戏的用户，跳过为 TID: %016lX 生成存档", tid);
-        log_file_write(debug_buf);
+        log_file_fwrite("警告: 未检测到当前运行游戏的用户，跳过为 TID: %016lX 生成存档", tid);
         return;
     }
     
@@ -1642,9 +1642,7 @@ static void generate_save_archive(u64 tid) {
     const char* username = g_current_game_user_name[0] ? g_current_game_user_name : "Unknown";
     
     // 添加调试日志：处理当前用户
-    snprintf(debug_buf, sizeof(debug_buf), "已为用户 %s (%016lX%016lX) 生成存档", 
-             username, target_user.uid[0], target_user.uid[1]);
-    log_file_write(debug_buf);
+    log_file_fwrite("已为用户 %s (%016lX%016lX) 生成存档", username, target_user.uid[0], target_user.uid[1]);
     
     FsFileSystem save_fs;
     FsSaveDataAttribute attr = {0};
@@ -1656,8 +1654,7 @@ static void generate_save_archive(u64 tid) {
     Result rc = fsOpenReadOnlySaveDataFileSystem(&save_fs, FsSaveDataSpaceId_User, &attr);
     if (R_SUCCEEDED(rc)) {
         // 添加调试日志：成功挂载存档文件系统
-        snprintf(debug_buf, sizeof(debug_buf), "已成功挂载用户 %s 的存档文件系统", username);
-        log_file_write(debug_buf);
+        log_file_fwrite("已成功挂载用户 %s 的存档文件系统", username);
         
         // 检查存档是否存在 - 尝试读取存档根目录
         FsDir dir;
@@ -1671,15 +1668,13 @@ static void generate_save_archive(u64 tid) {
             
             // 检查获取条目数量是否成功
             if (R_FAILED(count_rc)) {
-                snprintf(debug_buf, sizeof(debug_buf), "警告: 无法获取用户 %s 的存档条目数量: 0x%x", username, count_rc);
-                log_file_write(debug_buf);
+                log_file_fwrite("警告: 无法获取用户 %s 的存档条目数量: 0x%x", username, count_rc);
                 fsFsClose(&save_fs);
                 return;
             }
             
             // 添加调试日志：存档条目数量
-            snprintf(debug_buf, sizeof(debug_buf), "用户 %s 的存档条目数量: %ld", username, entry_count);
-            log_file_write(debug_buf);
+            log_file_fwrite("用户 %s 的存档条目数量: %ld", username, entry_count);
             
             if (entry_count > 0) {
                 // 为当前用户创建存档ZIP文件
@@ -1689,14 +1684,12 @@ static void generate_save_archive(u64 tid) {
                 Result rc = mmz_build_zip(&mz, &save_fs, tid, target_user, FsSaveDataSpaceId_User);
                 if (R_SUCCEEDED(rc)) {
                     // 添加调试日志：成功生成存档元数据
-                    snprintf(debug_buf, sizeof(debug_buf), "已成功为用户 %s 生成存档元数据", username);
-                    log_file_write(debug_buf);
+                    log_file_fwrite("已成功为用户 %s 生成存档元数据", username);
                     
                     // 确保元数据写入磁盘
                     Result flush_rc = fsFileFlush(&mz.fbuf_out);
                     if (R_FAILED(flush_rc)) {
-                        snprintf(debug_buf, sizeof(debug_buf), "警告: 无法刷新用户 %s 的存档元数据文件: 0x%x", username, flush_rc);
-                        log_file_write(debug_buf);
+                        log_file_fwrite("警告: 无法刷新用户 %s 的存档元数据文件: 0x%x", username, flush_rc);
                     }
                     
                     // 创建最终路径：/AutoBack/用户名/folder_name/游戏名_用户名_最近一次webdav重命名存档的时间戳_序列号.zip
@@ -1712,23 +1705,20 @@ static void generate_save_archive(u64 tid) {
                     
                     // 检查路径长度是否超出限制
                     if (path_len >= sizeof(final_path)) {
-                        snprintf(debug_buf, sizeof(debug_buf), "警告: 最终路径长度 (%d 个字符) 超出限制，已截断", path_len);
-                        log_file_write(debug_buf);
+                        log_file_fwrite("警告: 最终路径长度 (%d 个字符) 超出限制，已截断", path_len);
                     }
                     
                     FsFileSystem* sdmc_fs = fsdev_wrapGetDeviceFileSystem("sdmc");
                     if (sdmc_fs != NULL) {
                         // 添加调试日志：获取SD卡文件系统成功
-                        snprintf(debug_buf, sizeof(debug_buf), "已成功获取SD卡文件系统");
-                        log_file_write(debug_buf);
+                        log_file_fwrite("已成功获取SD卡文件系统");
                         
                         // 确保用户目录存在
                         char user_dir[256] = {0};
                         snprintf(user_dir, sizeof(user_dir), "%s/%s", AUTOBACK_DIR_PATH, username);
                         Result user_dir_rc = fsFsCreateDirectory(sdmc_fs, user_dir);
                         if (R_FAILED(user_dir_rc) && user_dir_rc != 0x402) { // 0x402 = directory already exists
-                            snprintf(debug_buf, sizeof(debug_buf), "警告: 无法创建用户目录 %s: 0x%x", user_dir, user_dir_rc);
-                            log_file_write(debug_buf);
+                            log_file_fwrite("警告: 无法创建用户目录 %s: 0x%x", user_dir, user_dir_rc);
                         }
                         
                         // 确保游戏文件夹存在
@@ -1736,16 +1726,14 @@ static void generate_save_archive(u64 tid) {
                         snprintf(game_dir, sizeof(game_dir), "%s/%s/%s", AUTOBACK_DIR_PATH, username, folder_name);
                         Result game_dir_rc = fsFsCreateDirectory(sdmc_fs, game_dir);
                         if (R_FAILED(game_dir_rc) && game_dir_rc != 0x402) { // 0x402 = directory already exists
-                            snprintf(debug_buf, sizeof(debug_buf), "警告: 无法创建游戏目录 %s: 0x%x", game_dir, game_dir_rc);
-                            log_file_write(debug_buf);
+                            log_file_fwrite("警告: 无法创建游戏目录 %s: 0x%x", game_dir, game_dir_rc);
                         }
                         
                         // 管理存档数量：在创建新存档前检查并删除最旧的存档
                         manage_backup_count(username, folder_name);
                         
                         // 添加调试日志：开始流式传输ZIP到SD卡
-                        snprintf(debug_buf, sizeof(debug_buf), "已开始流式传输用户 %s 的存档元数据到SD卡", username);
-                        log_file_write(debug_buf);
+                        log_file_fwrite("已开始流式传输用户 %s 的存档元数据到SD卡", username);
                         
                         // 流式传输ZIP到SD卡
                         rc = stream_zip_to_sdcard(&mz, sdmc_fs, final_path);
@@ -1759,38 +1747,30 @@ static void generate_save_archive(u64 tid) {
                         if (sdmc_fs != NULL) {
                             Result delete_rc = fsFsDeleteFile(sdmc_fs, temp_path);
                             if (R_FAILED(delete_rc) && delete_rc != 0x202) { // 0x202 = file not found
-                                snprintf(debug_buf, sizeof(debug_buf), "警告: 无法删除临时文件 %s: 0x%x", temp_path, delete_rc);
-                                log_file_write(debug_buf);
+                                log_file_fwrite("警告: 无法删除临时文件 %s: 0x%x", temp_path, delete_rc);
                             }
                         }
                         
                         if (R_SUCCEEDED(rc)) {
-                            char log_buf[512] = {0};
-                            snprintf(log_buf, sizeof(log_buf), "已成功创建用户 %s 的存档元数据: %s", username, final_path);
-                            log_file_write(log_buf);
+                            log_file_fwrite("已成功创建用户 %s 的存档元数据: %s", username, final_path);
                             // 标记本地存档生成成功
                             local_backup_success = true;
                             // 备份完成时发送Ultrahand通知
                             create_ultrahand_notification("存档元数据备份已完成", 1);
                         } else {
-                            char log_buf[512] = {0};
-                            snprintf(log_buf, sizeof(log_buf), "警告: 无法流式传输用户 %s 的存档元数据到SD卡: 0x%x", username, rc);
-                            log_file_write(log_buf);
+                            log_file_fwrite("警告: 无法流式传输用户 %s 的存档元数据到SD卡: 0x%x", username, rc);
                             // 备份失败时发送Ultrahand通知
                             create_ultrahand_notification("存档元数据备份失败", 2);
                         }
                     } else {
-                        snprintf(debug_buf, sizeof(debug_buf), "警告: 无法获取SD卡文件系统");
-                        log_file_write(debug_buf);
+                        log_file_write("警告: 无法获取SD卡文件系统");
                         create_ultrahand_notification("SD卡文件系统不可用", 2);
                     }
                     
                     // 注意：不在这里删除临时文件，因为mmz_read还需要读取它
                     // 清理工作将在stream_zip_to_sdcard完成后进行
                 } else {
-                    char log_buf[512] = {0};
-                    snprintf(log_buf, sizeof(log_buf), "警告: 无法为TID %016lX 和用户 %s 生成存档元数据: 0x%x", tid, username, rc);
-                    log_file_write(log_buf);
+                    log_file_fwrite("警告: 无法为TID %016lX 和用户 %s 生成存档元数据: 0x%x", tid, username, rc);
                     create_ultrahand_notification("存档元数据生成失败", 2);
                     
                     // 注意：不在这里删除临时文件，因为mmz_read还需要读取它
@@ -1798,20 +1778,13 @@ static void generate_save_archive(u64 tid) {
                 }
             } else {
                 // 存档目录存在但为空，跳过
-                char log_buf[512] = {0};
-                snprintf(log_buf, sizeof(log_buf), "警告: 存档目录为空，跳过TID %016lX 和用户 %s 的存档元数据生成", tid, username);
-                log_file_write(log_buf);
+                log_file_fwrite("警告: 存档目录为空，跳过TID %016lX 和用户 %s 的存档元数据生成", tid, username);
             }
         } else if (dir_rc == 0x7D402) { // FSERROR_PATH_NOT_FOUND
-            // 存档不存在，跳过该用户
-            char log_buf[512] = {0};
-            snprintf(log_buf, sizeof(log_buf), "警告: 未找到TID %016lX 和用户 %s 的存档元数据，跳过", tid, username);
-            log_file_write(log_buf);
+            log_file_fwrite("警告: 未找到TID %016lX 和用户 %s 的存档元数据，跳过", tid, username);
         } else {
             // 其他错误，记录日志但继续
-            char log_buf[512] = {0};
-            snprintf(log_buf, sizeof(log_buf), "警告: 检查TID %016lX 和用户 %s 的存档元数据时出错: 0x%x", tid, username, dir_rc);
-            log_file_write(log_buf);
+            log_file_fwrite("警告: 检查TID %016lX 和用户 %s 的存档元数据时出错: 0x%x", tid, username, dir_rc);
         }
         
         // 关闭存档文件系统
@@ -1823,8 +1796,7 @@ static void generate_save_archive(u64 tid) {
     }
     
     // 添加调试日志：完成生成存档
-    snprintf(debug_buf, sizeof(debug_buf), "已完成为TID %016lX 和用户 %s 生成存档元数据", tid, username);
-    log_file_write(debug_buf);
+    log_file_fwrite("已完成为TID %016lX 和用户 %s 生成存档元数据", tid, username);
     
     // 本地存档生成完成后，检测网络连接状态和webdav配置
     if (local_backup_success) {
@@ -1839,40 +1811,33 @@ static void generate_save_archive(u64 tid) {
                     // 联网且webdav启用，执行握手操作
                     struct in_addr addr;
                     addr.s_addr = ip_addr;
-                    snprintf(debug_buf, sizeof(debug_buf), "已连接网络 (IP: %s) 且 WebDAV 已启用，正在执行握手", inet_ntoa(addr));
-                    log_file_write(debug_buf);
+                    log_file_fwrite("已连接网络 (IP: %s) 且 WebDAV 已启用，正在执行握手", inet_ntoa(addr));
                     
                     // 执行WebDAV握手
                     bool handshake_success = webdav_handshake();
                     if (handshake_success) {
-                        snprintf(debug_buf, sizeof(debug_buf), "已成功完成 WebDAV 握手并上传存档元数据");
-                        log_file_write(debug_buf);
+                        log_file_fwrite("已成功完成 WebDAV 握手并上传存档元数据");
                     } else {
-                        snprintf(debug_buf, sizeof(debug_buf), "WebDAV 握手失败，但本地备份已成功完成");
-                        log_file_write(debug_buf);
+                        log_file_fwrite("WebDAV 握手失败，但本地备份已成功完成");
                     }
                 } else {
                     // 联网但webdav未启用
                     struct in_addr addr;
                     addr.s_addr = ip_addr;
-                    snprintf(debug_buf, sizeof(debug_buf), "已连接网络 (IP: %s) 但 WebDAV 未启用，本地备份已完成", inet_ntoa(addr));
-                    log_file_write(debug_buf);
+                    log_file_fwrite("已连接网络 (IP: %s) 但 WebDAV 未启用，本地备份已完成", inet_ntoa(addr));
                 }
             } else {
                 // 未联网状态
-                snprintf(debug_buf, sizeof(debug_buf), "未连接网络，本地备份已完成");
-                log_file_write(debug_buf);
+                log_file_fwrite("未连接网络，本地备份已完成");
             }
             
             nifmExit();
         } else {
             // nifm初始化失败，假设未联网
-            snprintf(debug_buf, sizeof(debug_buf), "已初始化网络服务失败，假设为离线模式，本地备份已完成");
-            log_file_write(debug_buf);
+            log_file_write("已初始化网络服务失败，假设为离线模式，本地备份已完成");
         }
     } else {
-        snprintf(debug_buf, sizeof(debug_buf), "本地备份失败，跳过 WebDAV 握手");
-        log_file_write(debug_buf);
+        log_file_write("本地备份失败，跳过 WebDAV 握手");
     }
 }
 
@@ -2836,7 +2801,7 @@ static bool webdav_handshake(void) {
         }
         
         if (game_tid != 0 && game_tid != 0x0100000000001000ULL) {
-            get_app_name(game_tid, &content_id, &app_name);
+            get_app_en_name(game_tid, &content_id, &app_name);
             
             // 清理游戏名称中的非法字符
             if (strlen(app_name.str) > 0) {
@@ -3410,7 +3375,7 @@ static Result stream_zip_to_webdav(const char* local_zip_path, u64 tid, AccountU
     struct AppName app_name = {0};
     
     if (tid != 0 && tid != 0x0100000000001000ULL) {
-        get_app_name(tid, &content_id, &app_name);
+        get_app_en_name(tid, &content_id, &app_name);
         if (strlen(app_name.str) > 0) {
             strncpy(sanitized_title, app_name.str, sizeof(sanitized_title) - 1);
             sanitize_filename(sanitized_title);
@@ -4141,4 +4106,5 @@ static u32 socketSelectVersion(void) {
         return 9;
     }
 }
+
  

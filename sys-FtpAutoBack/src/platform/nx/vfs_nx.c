@@ -461,6 +461,7 @@ Result get_app_name(u64 app_id, NcmContentId* id, struct AppName* name) {
 
         // 尝试从当前存储获取应用程序名称
         if (R_SUCCEEDED(rc = get_app_name2(app_id, &g_db[i], &g_cs[i], id, name))) {
+            
             return rc;
         }
     }
@@ -559,7 +560,18 @@ Result get_app_en_name(u64 app_id, NcmContentId* id, struct AppName* name) {
         }
 
         // 尝试从当前存储获取应用程序名称
-        if (R_SUCCEEDED(rc = get_app_name2(app_id, &g_db[i], &g_cs[i], id, name))) {
+        if (R_SUCCEEDED(rc = get_app_en_name2(app_id, &g_db[i], &g_cs[i], id, name))) {
+            // 检查获取到的名称是否为英文（只包含ASCII字符）
+            if (name->str[0] != '\0') {
+                for (size_t j = 0; j < strlen(name->str); j++) {
+                    unsigned char c = (unsigned char)name->str[j];
+                    // ASCII字符范围：32-126（可打印字符）
+                    if (c < 32 || c > 126) {
+                        snprintf(name->str, sizeof(name->str), "%016lX", app_id);
+                        break;
+                    }
+                }
+            }
             return rc;
         }
     }
