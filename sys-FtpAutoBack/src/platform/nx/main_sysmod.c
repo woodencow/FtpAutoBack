@@ -1229,9 +1229,34 @@ static void auto_backup_thread(void* arg) {
             if (g_previous_game_tid != 0x0100000000001000ULL && (g_previous_game_tid & 0xFFFF000000000000ULL) == 0x0100000000000000ULL) {
                 // 检查commitid变化次数
                 if (commit_change_count >= 1) {
+                    // 检测到存档变化时发送Ultrahand通知
+                    create_ultrahand_notification("游戏 %016lX 的存档已变化，准备备份", 1);
+
+                    // 开启LED呼吸灯效果作为开始提示
+                    HidsysUniquePadId unique_pad_ids[2] = {0};
+                    s32 total_entries = 0;
+                    Result rc = hidsysGetUniquePadsFromNpad(HidNpadIdType_No1, unique_pad_ids, 2, &total_entries);
+                    
+                    // 尝试手持模式
+                    if (R_FAILED(rc) || total_entries == 0) rc = hidsysGetUniquePadsFromNpad(HidNpadIdType_Handheld, unique_pad_ids, 2, &total_entries);
+                      
+                    // 添加LED操作的错误处理
+                    bool led_enabled = false;
+                    if (R_SUCCEEDED(rc) && total_entries > 0) {
+                        for(s32 i = 0; i < total_entries; i++) {
+                            enableBreathingEffect(unique_pad_ids[i]);
+                            led_enabled = true;
+                        }
+                    }
+
                     // 生成存档
                     generate_save_archive(g_previous_game_tid);
                     log_file_fwrite("创建游戏 %016lX 的存档备份 - CommitID 变化次数: %d", g_previous_game_tid, commit_change_count);
+
+                    // 关闭LED效果作为完成提示，只有在成功开启时才关闭
+                    if (led_enabled && R_SUCCEEDED(rc) && total_entries > 0) {
+                        for(s32 i = 0; i < total_entries; i++) disableBreathingEffect(unique_pad_ids[i]);
+                    }
                 } 
                 else {
                     log_file_fwrite("跳过游戏 %016lX 的存档备份 - CommitID 未变化 (变化次数: %d)", g_previous_game_tid, commit_change_count);
