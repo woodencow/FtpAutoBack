@@ -126,6 +126,7 @@ static const char* LOG_PATH = "/config/ftpsrv/log.txt";
 static const char* AUTOBACK_DIR_PATH = "/AutoBack";
 static struct FtpSrvConfig g_ftpsrv_config = {0};
 static bool g_led_enabled = false;
+static bool g_back_led_enabled = false;
 static volatile bool g_should_exit = false;
 
 // 用户信息相关全局变量
@@ -258,6 +259,8 @@ void enableBreathingEffect(HidsysUniquePadId unique_pad_id);
 void disableBreathingEffect(HidsysUniquePadId unique_pad_id);
 void enableHeartbeatEffect(HidsysUniquePadId unique_pad_id);
 void disableHeartbeatEffect(HidsysUniquePadId unique_pad_id);
+bool Show_Back_LED(void);
+void Close_Back_LED(void);
 
 // Ultrahand通知系统
 static void create_ultrahand_notification(const char* message, int priority);
@@ -524,6 +527,7 @@ static bool initialize_AutoBack_DIR(void) {
 
     // 暂时没别的地方放了，临时放这里吧。
     g_maxback = ini_getl("Backup-Basic Settings", "maxback", 0, INI_PATH);  // 最大备份数量
+    g_back_led_enabled = ini_getbool("Backup-Basic Settings", "back_led", 0, INI_PATH);  // LED提示
 
     // 创建AutoBack文件夹
     FsFileSystem* sdmc_fs = fsdev_wrapGetDeviceFileSystem("sdmc");
@@ -1232,31 +1236,16 @@ static void auto_backup_thread(void* arg) {
                     // 检测到存档变化时发送Ultrahand通知
                     create_ultrahand_notification("游戏 %016lX 的存档已变化，准备备份", 1);
 
-                    // 开启LED呼吸灯效果作为开始提示
-                    HidsysUniquePadId unique_pad_ids[2] = {0};
-                    s32 total_entries = 0;
-                    Result rc = hidsysGetUniquePadsFromNpad(HidNpadIdType_No1, unique_pad_ids, 2, &total_entries);
-                    
-                    // 尝试手持模式
-                    if (R_FAILED(rc) || total_entries == 0) rc = hidsysGetUniquePadsFromNpad(HidNpadIdType_Handheld, unique_pad_ids, 2, &total_entries);
-                      
-                    // 添加LED操作的错误处理
-                    bool led_enabled = false;
-                    if (R_SUCCEEDED(rc) && total_entries > 0) {
-                        for(s32 i = 0; i < total_entries; i++) {
-                            enableBreathingEffect(unique_pad_ids[i]);
-                            led_enabled = true;
-                        }
-                    }
+                    // 开启呼吸灯
+                    bool led_enabled = Show_Back_LED();
 
                     // 生成存档
                     generate_save_archive(g_previous_game_tid);
                     log_file_fwrite("创建游戏 %016lX 的存档备份 - CommitID 变化次数: %d", g_previous_game_tid, commit_change_count);
 
                     // 关闭LED效果作为完成提示，只有在成功开启时才关闭
-                    if (led_enabled && R_SUCCEEDED(rc) && total_entries > 0) {
-                        for(s32 i = 0; i < total_entries; i++) disableBreathingEffect(unique_pad_ids[i]);
-                    }
+                    if (led_enabled) Close_Back_LED();
+
                 } 
                 else {
                     log_file_fwrite("跳过游戏 %016lX 的存档备份 - CommitID 未变化 (变化次数: %d)", g_previous_game_tid, commit_change_count);
@@ -3630,23 +3619,6 @@ static Result stream_zip_to_webdav(const char* local_zip_path, u64 tid, AccountU
             // WebDAV上传成功时发送Ultrahand通知
             create_ultrahand_notification("WebDAV 上传成功", 1);
             
-            // 关闭LED呼吸灯效果作为完成提示
-            HidsysUniquePadId unique_pad_ids[2] = {0};
-            s32 total_entries = 0;
-            Result led_rc = hidsysGetUniquePadsFromNpad(HidNpadIdType_No1, unique_pad_ids, 2, &total_entries);
-            
-            if (R_FAILED(led_rc) || total_entries == 0) {
-                // 尝试手持模式
-                led_rc = hidsysGetUniquePadsFromNpad(HidNpadIdType_Handheld, unique_pad_ids, 2, &total_entries);
-            }
-            
-            if (R_SUCCEEDED(led_rc) && total_entries > 0) {
-                for(s32 i = 0; i < total_entries; i++) {
-                    disableBreathingEffect(unique_pad_ids[i]);
-                }
-                log_file_write("LED breathing effect disabled after WebDAV upload success");
-            }
-            
             result = 0;
             
             // 注意：WebDAV存档数量管理已移到上传前执行，与本地存档保持一致时序
@@ -3826,6 +3798,57 @@ void disableHeartbeatEffect(HidsysUniquePadId unique_pad_id) {
     HidsysNotificationLedPattern pattern;
     memset(&pattern, 0, sizeof(pattern));
     hidsysSetNotificationLedPattern(&pattern, unique_pad_id);
+}
+
+// 显示备份LED效果 - 封装现有的LED开启逻辑
+bool Show_Back_LED() {
+
+    // 如果没配置开启，则直接返回
+    if (!g_back_led_enabled) return false;
+
+    // 获取手柄设备信息
+    HidsysUniquePadId unique_pad_ids[2] = {0};
+    s32 total_entries = 0;
+    Result rc = hidsysGetUniquePadsFromNpad(HidNpadIdType_No1, unique_pad_ids, 2, &total_entries);
+    
+    // 尝试手持模式
+    if (R_FAILED(rc) || total_entries == 0) {
+        rc = hidsysGetUniquePadsFromNpad(HidNpadIdType_Handheld, unique_pad_ids, 2, &total_entries);
+    }
+      
+    // 为所有检测到的手柄开启LED呼吸灯效果
+    if (R_SUCCEEDED(rc) && total_entries > 0) {
+        for(s32 i = 0; i < total_entries; i++) {
+            enableBreathingEffect(unique_pad_ids[i]);
+        }
+        return true;  // 成功开启至少一个手柄的LED效果
+    }
+    
+    return false;  // 未能开启任何LED效果
+}
+
+// 关闭备份LED效果 - 封装现有的LED关闭逻辑
+void Close_Back_LED() {
+
+    // 如果没配置开启，则直接返回
+    if (!g_back_led_enabled) return false;
+
+    // 获取手柄设备信息
+    HidsysUniquePadId unique_pad_ids[2] = {0};
+    s32 total_entries = 0;
+    Result rc = hidsysGetUniquePadsFromNpad(HidNpadIdType_No1, unique_pad_ids, 2, &total_entries);
+    
+    // 尝试手持模式
+    if (R_FAILED(rc) || total_entries == 0) {
+        rc = hidsysGetUniquePadsFromNpad(HidNpadIdType_Handheld, unique_pad_ids, 2, &total_entries);
+    }
+      
+    // 为所有检测到的手柄关闭LED呼吸灯效果
+    if (R_SUCCEEDED(rc) && total_entries > 0) {
+        for(s32 i = 0; i < total_entries; i++) {
+            disableBreathingEffect(unique_pad_ids[i]);
+        }
+    }
 }
 
 // Ultrahand通知系统
