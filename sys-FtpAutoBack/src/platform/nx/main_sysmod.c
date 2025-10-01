@@ -1766,13 +1766,13 @@ static void generate_save_archive(u64 tid) {
                             // 备份完成时发送Ultrahand通知
                             create_ultrahand_notification("存档元数据备份已完成", 1);
                             // 写入备份记录: "保存成功|游戏名|用户名|时间戳"
-                            backuplog_fwrite("保存成功|%s|%s|%s", app_name.str, username, latest_timestamp);
+                            if (!webdav_config.enabled) backuplog_fwrite("本地备份成功|%s|%s|%s", app_name.str, username, latest_timestamp);
                         } else {
                             log_file_fwrite("警告: 无法流式传输用户 %s 的存档元数据到SD卡: 0x%x", username, rc);
                             // 备份失败时发送Ultrahand通知
                             create_ultrahand_notification("存档元数据备份失败", 2);
                             // 写入备份记录: "保存失败|游戏名|用户名|时间戳"
-                            backuplog_fwrite("保存失败|%s|%s|%s", app_name.str, username, latest_timestamp);
+                            backuplog_fwrite("本地备份失败|%s|%s|%s", app_name.str, username, latest_timestamp);
                         }
                     } else {
                         log_file_write("警告: 无法获取SD卡文件系统");
@@ -3643,7 +3643,7 @@ static Result stream_zip_to_webdav(const char* local_zip_path, u64 tid, AccountU
             create_ultrahand_notification("WebDAV 上传成功", 1);
             
             // 写入备份记录: "上传成功|游戏名|用户名|时间戳" (2表示WebDAV上传成功)
-            backuplog_fwrite("上传成功|%s|%s|%s", sanitized_title, username, ntp_timestamp);
+            backuplog_fwrite("上传备份成功|%s|%s|%s", sanitized_title, username, ntp_timestamp);
             
             result = 0;
             
@@ -3655,7 +3655,7 @@ static Result stream_zip_to_webdav(const char* local_zip_path, u64 tid, AccountU
             create_ultrahand_notification("WebDAV 上传失败", 2);
             
             // 写入备份记录: "上传失败|游戏名|用户名|时间戳" (3表示WebDAV上传失败)
-            backuplog_fwrite("上传失败|%s|%s|%s", sanitized_title, username, ntp_timestamp);
+            backuplog_fwrite("上传备份失败，仅备份至本地|%s|%s|%s", sanitized_title, username, ntp_timestamp);
             
             result = -1;
         }
@@ -3670,7 +3670,7 @@ static Result stream_zip_to_webdav(const char* local_zip_path, u64 tid, AccountU
         create_ultrahand_notification("WebDAV 上传失败", 2);
         
         // 写入备份记录: "上传失败|游戏名|用户名|时间戳" (3表示WebDAV上传失败)
-        backuplog_fwrite("上传失败|%s|%s|%s", sanitized_title, username, ntp_timestamp);
+        backuplog_fwrite("上传备份失败，仅备份至本地|%s|%s|%s", sanitized_title, username, ntp_timestamp);
         
         result = -1;
     }
