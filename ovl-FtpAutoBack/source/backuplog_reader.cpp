@@ -16,11 +16,6 @@ BackuplogReader::~BackuplogReader() {
 std::vector<BackupLogEntry> BackuplogReader::read_last_entries(int max_entries) {
     std::vector<BackupLogEntry> result;
     
-    // 参数检查
-    if (max_entries <= 0) {
-        return result;  // 返回空向量
-    }
-    
     // 打开文件
     FILE* fp = fopen(LOG_FILE_PATH, "rb");
     if (!fp) {

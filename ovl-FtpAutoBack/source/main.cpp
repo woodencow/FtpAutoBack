@@ -1268,8 +1268,12 @@ public:
         nifmInitialize(NifmServiceType_User);
         // 初始化pmshell服务用于管理模块
         pmshellInitialize();
+        // 挂载SD卡文件系统，确保文件访问正常
+        fsdevMountSdmc();
     }
     virtual void exitServices() override {   // 在结束时调用以清理之前初始化的所有服务
+        // 卸载SD卡文件系统
+        fsdevUnmountDevice("sdmc");
         // 清理pmshell服务
         pmshellExit();
         // 清理nifm服务
