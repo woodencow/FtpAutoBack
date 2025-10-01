@@ -128,7 +128,7 @@ static const char* AUTOBACK_DIR_PATH = "/AutoBack";
 static struct FtpSrvConfig g_ftpsrv_config = {0};
 static bool g_led_enabled = false;
 static bool g_back_led_enabled = false;
-static bool backup_notify_enabled = false;
+static bool g_backup_notify_enabled = false;
 static volatile bool g_should_exit = false;
 static u32 g_webdav_tcp_buffer_max_size = 0;
 
@@ -535,7 +535,7 @@ static bool initialize_AutoBack_DIR(void) {
     // 暂时没别的地方放了，临时放这里吧。
     g_maxback = ini_getl("Backup-Basic Settings", "maxback", 0, INI_PATH);  // 最大备份数量
     g_back_led_enabled = ini_getbool("Backup-Basic Settings", "backup_led", 0, INI_PATH);  // LED提示
-    backup_notify_enabled = ini_getbool("Backup-Basic Settings", "backup_notify", 0, INI_PATH);  // 弹窗通知
+    g_backup_notify_enabled = ini_getbool("Backup-Basic Settings", "backup_notify", 0, INI_PATH);  // 弹窗通知
 
     // 创建AutoBack文件夹
     FsFileSystem* sdmc_fs = fsdev_wrapGetDeviceFileSystem("sdmc");
@@ -1256,7 +1256,7 @@ static void auto_backup_thread(void* arg) {
                 // 检查commitid变化次数
                 if (commit_change_count >= 1) {
                     // 检测到存档变化时发送Ultrahand通知
-                    if (backup_notify_enabled) create_ultrahand_notification("存档已变化，开始备份", 1);
+                    create_ultrahand_notification("存档已变化，开始备份", 1);
 
                     // 开启呼吸灯
                     bool led_enabled = Show_Back_LED();
@@ -1633,9 +1633,6 @@ static void generate_save_archive(u64 tid) {
     // 添加调试日志：开始生成存档
     log_file_fwrite("准备为 TID: %016lX 生成存档", tid);
     
-    // 备份开始时发送Ultrahand通知
-    // if (backup_notify_enabled) create_ultrahand_notification("开始备份", 1);
-    
     // 标记是否成功生成本地存档
     bool local_backup_success = false;
     
@@ -1772,26 +1769,26 @@ static void generate_save_archive(u64 tid) {
                             // 标记本地存档生成成功
                             local_backup_success = true;
                             // 备份完成时发送Ultrahand通知
-                            if (backup_notify_enabled) create_ultrahand_notification("本地备份完成", 1);
+                            create_ultrahand_notification("本地备份完成", 1);
                             // 写入备份记录: "保存成功|游戏名|用户名|时间戳"
                             if (!webdav_config.enabled) backuplog_fwrite("本地备份成功|%s|%s|%s", app_name.str, username, latest_timestamp);
                         } else {
                             log_file_fwrite("警告: 无法流式传输用户 %s 的存档元数据到SD卡: 0x%x", username, rc);
                             // 备份失败时发送Ultrahand通知
-                            if (backup_notify_enabled) create_ultrahand_notification("本地备份失败", 2);
+                            create_ultrahand_notification("本地备份失败", 2);
                             // 写入备份记录: "保存失败|游戏名|用户名|时间戳"
                             backuplog_fwrite("本地备份失败|%s|%s|%s", app_name.str, username, latest_timestamp);
                         }
                     } else {
                         log_file_write("警告: 无法获取SD卡文件系统");
-                        if (backup_notify_enabled) create_ultrahand_notification("SD卡文件系统不可用", 2);
+                        create_ultrahand_notification("SD卡文件系统不可用", 2);
                     }
                     
                     // 注意：不在这里删除临时文件，因为mmz_read还需要读取它
                     // 清理工作将在stream_zip_to_sdcard完成后进行
                 } else {
                     log_file_fwrite("警告: 无法为TID %016lX 和用户 %s 生成存档元数据: 0x%x", tid, username, rc);
-                    if (backup_notify_enabled) create_ultrahand_notification("本地备份生成失败", 2);
+                    create_ultrahand_notification("本地备份生成失败", 2);
                     
                     // 注意：不在这里删除临时文件，因为mmz_read还需要读取它
                     // 清理工作将在stream_zip_to_sdcard完成后进行
@@ -3382,7 +3379,7 @@ static Result stream_zip_to_webdav(const char* local_zip_path, u64 tid, AccountU
         char debug_buf[256] = {0};
         snprintf(debug_buf, sizeof(debug_buf), "NTP时间不可用, 跳过WebDAV上传");
         log_file_write(debug_buf);
-        if (backup_notify_enabled) create_ultrahand_notification("无法获取时间，备份上传失败", 1);
+        create_ultrahand_notification("无法获取时间，备份上传失败", 1);
         NcmContentId content_id = {0};
         struct AppName app_name = {0};
         get_app_log_name(tid, &content_id, &app_name);
@@ -3658,7 +3655,7 @@ static Result stream_zip_to_webdav(const char* local_zip_path, u64 tid, AccountU
             log_file_write(debug_buf);
             
             // WebDAV上传成功时发送Ultrahand通知
-            if (backup_notify_enabled) create_ultrahand_notification("备份上传成功", 1);
+            create_ultrahand_notification("备份上传成功", 1);
             
             // 写入备份记录: "上传成功|游戏名|用户名|时间戳" (2表示WebDAV上传成功)
             backuplog_fwrite("云端备份成功|%s|%s|%s", app_name.str, username, ntp_timestamp);
@@ -3670,7 +3667,7 @@ static Result stream_zip_to_webdav(const char* local_zip_path, u64 tid, AccountU
             snprintf(debug_buf, sizeof(debug_buf), "WebDAV 上传失败: HTTP %ld", http_code);
             log_file_write(debug_buf);
             // WebDAV上传失败时发送Ultrahand通知
-            if (backup_notify_enabled) create_ultrahand_notification("备份上传失败", 2);
+            create_ultrahand_notification("备份上传失败", 2);
             
             // 写入备份记录: "上传失败|游戏名|用户名|时间戳" (3表示WebDAV上传失败)
             backuplog_fwrite("云端备份失败，仅备份至本地|%s|%s|%s", app_name.str, username, ntp_timestamp);
@@ -3685,7 +3682,7 @@ static Result stream_zip_to_webdav(const char* local_zip_path, u64 tid, AccountU
         }
         log_file_write(debug_buf);
         // WebDAV上传失败时发送Ultrahand通知
-        if (backup_notify_enabled) create_ultrahand_notification("备份上传失败", 2);
+        create_ultrahand_notification("备份上传失败", 2);
         
         // 写入备份记录: "上传失败|游戏名|用户名|时间戳" (3表示WebDAV上传失败)
         backuplog_fwrite("云端备份失败，仅备份至本地|%s|%s|%s", sanitized_title, username, ntp_timestamp);
@@ -3905,6 +3902,10 @@ void Close_Back_LED() {
 
 // Ultrahand通知系统
 static void create_ultrahand_notification(const char* message, int priority) {
+
+    // 如果配置文件，没有开启通知，则直接返回
+    if (!g_backup_notify_enabled) return;
+
     char notifications_path[512];
     snprintf(notifications_path, sizeof(notifications_path), "/config/ultrahand/notifications");
     
