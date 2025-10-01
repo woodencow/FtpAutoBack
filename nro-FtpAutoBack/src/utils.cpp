@@ -106,7 +106,7 @@ namespace utils {
             entry.userName = tokens[2];
             entry.time = tokens[3];
             
-            // 将时间格式从 YYYY.MM.DD@HH.MM.SS 转换为 YYYY年MM月DD日HH时MM分
+            // 将时间格式从 YYYY.MM.DD@HH.MM.SS 转换为 YYYY年MM月DD日 HH时MM分SS秒
             // 查找@符号的位置
             size_t atPos = entry.time.find('@');
             if (atPos != std::string::npos) {
@@ -114,31 +114,20 @@ namespace utils {
                 std::string timePart = entry.time.substr(atPos + 1);
                 
                 // 替换日期部分的点号为中文
-                for (size_t i = 0; i < datePart.length(); ++i) {
-                    if (datePart[i] == '.') {
-                        if (datePart.substr(0, i).find('.') == std::string::npos) {
-                            datePart.replace(i, 1, "年");
-                        } else if (datePart.substr(0, i).find("年") != std::string::npos && 
-                                  datePart.substr(0, i).substr(datePart.substr(0, i).find("年")+2).find('.') == std::string::npos) {
-                            datePart.replace(i, 1, "月");
-                        } else {
-                            datePart.replace(i, 1, "日");
-                        }
-                    }
-                }
+                size_t firstDot = datePart.find('.');
+                size_t secondDot = datePart.find('.', firstDot + 1);
+                datePart.replace(secondDot, 1, "月");
+                datePart.replace(firstDot, 1, "年");
+                datePart += "日";
                 
                 // 替换时间部分的点号为中文
-                for (size_t i = 0; i < timePart.length(); ++i) {
-                    if (timePart[i] == '.') {
-                        if (timePart.substr(0, i).find('.') == std::string::npos) {
-                            timePart.replace(i, 1, "时");
-                        } else {
-                            timePart.replace(i, 1, "分");
-                        }
-                    }
-                }
+                size_t firstTimeDot = timePart.find('.');
+                size_t secondTimeDot = timePart.find('.', firstTimeDot + 1);
+                timePart.replace(secondTimeDot, 1, "分");
+                timePart.replace(firstTimeDot, 1, "时");
+                timePart += "秒";
                 
-                entry.time = datePart + timePart;
+                entry.time = datePart + " " + timePart;
             }
         }
         
