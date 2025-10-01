@@ -407,13 +407,15 @@ Result get_app_name2(u64 app_id, NcmContentMetaDatabase* db, NcmContentStorage* 
     rc = fsFileRead(&file, off, name->str, sizeof(name->str), 0, &bytes_read);
     
     // 如果当前语言没有名称，尝试其他语言
+    // 首先尝试繁体中文，没有的话，就遍历其他语言
     if (name->str[0] == '\0') {
+        off = 13 * sizeof(NacpLanguageEntry); // 繁体中文索引为13
+        rc = fsFileRead(&file, off, name->str, sizeof(name->str), 0, &bytes_read);
+        if (name->str[0] != '\0') break;
         for (int i = 0; i < 16; i++) {
             off = i * sizeof(NacpLanguageEntry);
             rc = fsFileRead(&file, off, name->str, sizeof(name->str), 0, &bytes_read);
-            if (name->str[0] != '\0') {
-                break;
-            }
+            if (name->str[0] != '\0') break;
         }
     }
 
@@ -466,114 +468,6 @@ Result get_app_name(u64 app_id, NcmContentId* id, struct AppName* name) {
         }
     }
 
-    return rc;
-}
-
-
-// 供备份记录使用的，获取应用名称，优先级为 简中-繁中-美式英语-英式英语-日语-韩语
-Result get_app_log_name2(u64 app_id, NcmContentMetaDatabase* db, NcmContentStorage* cs, NcmContentId* id, struct AppName* name) {
-    Result rc;
-    NcmContentMetaKey key;
-    s32 entries_total;
-    s32 entries_written;
-    
-    // 从数据库中查找应用程序的元数据
-    if (R_FAILED(rc = ncmContentMetaDatabaseList(db, &entries_total, &entries_written, &key, 1, NcmContentMetaType_Application, app_id, 0, UINT64_MAX, NcmContentInstallType_Full))) {
-        return rc;
-    }
-
-    // 获取控制数据的内容ID
-    if (R_FAILED(rc = ncmContentMetaDatabaseGetContentIdByType(db, id, &key, NcmContentType_Control))) {
-        return rc;
-    }
-
-    // 获取内容存储路径
-    char nxpath[FS_MAX_PATH];
-    if (R_FAILED(rc = ncmContentStorageGetPath(cs, nxpath, sizeof(nxpath), id))) {
-        return rc;
-    }
-
-    // 打开控制数据文件系统
-    FsFileSystem fs;
-    if (R_FAILED(rc = fsOpenFileSystemWithId(&fs, key.id, FsFileSystemType_ContentControl, nxpath, FsContentAttributes_All))) {
-        return rc;
-    }
-
-    // 打开control.nacp文件
-    strcpy(nxpath, "/control.nacp");
-    FsFile file;
-    if (R_FAILED(rc = fsFsOpenFile(&fs, nxpath, FsOpenMode_Read, &file))) {
-        fsFsClose(&fs);
-        return rc;
-    }
-
-    // 初始化名称字符串
-    name->str[0] = '\0';
-    
-    // 按优先级顺序尝试获取应用名称
-    // 优先级顺序: 简中(14) -> 繁中(13) -> 美式英语(0) -> 英式英语(1) -> 日语(2) -> 韩语(12)
-    static const int language_priority[] = {14, 13, 0, 1, 2, 12};
-    const int language_count = sizeof(language_priority) / sizeof(language_priority[0]);
-    
-    u64 bytes_read;
-    s64 off;
-    
-    for (int i = 0; i < language_count; i++) {
-        off = language_priority[i] * sizeof(NacpLanguageEntry);
-        rc = fsFileRead(&file, off, name->str, sizeof(name->str), 0, &bytes_read);
-        if (name->str[0] != '\0') {
-            break;
-        }
-    }
-    
-    // 如果所有语言都没有名称，则使用app_id作为名称
-    if (name->str[0] == '\0') {
-        snprintf(name->str, sizeof(name->str), "%016lX", app_id);
-    }
-
-    // 关闭文件和文件系统
-    fsFileClose(&file);
-    fsFsClose(&fs);
-    return rc;
-}
-
-// 供日志系统使用的，获取应用名称
-Result get_app_log_name(u64 app_id, NcmContentId* id, struct AppName* name) {
-    Result rc;
-
-    // 按常用程度排序的存储ID列表
-    static const NcmStorageId ids[NCM_SIZE] = {
-        NcmStorageId_SdCard,        // SD卡存储
-        NcmStorageId_BuiltInUser,   // 内置用户存储
-    };
-
-    // 遍历所有存储位置
-    for (int i = 0; i < NCM_SIZE; i++) {
-        // 如果NCM内容存储服务未激活，则打开它
-        // 在这里而不是启动时打开是因为NCM服务在启动时可能还未准备好
-        if (!serviceIsActive(&g_cs[i].s)) {
-            if (R_FAILED(rc = ncmOpenContentStorage(&g_cs[i], ids[i]))) {
-                log_file_fwrite("failed: ncmOpenContentStorage() 0x%X\n", rc);
-                continue;
-            }
-        }
-
-        // 如果NCM内容元数据数据库未激活，则打开它
-        if (!serviceIsActive(&g_db[i].s)) {
-            if (R_FAILED(rc = ncmOpenContentMetaDatabase(&g_db[i], ids[i]))) {
-                log_file_fwrite("failed: ncmOpenContentMetaDatabase() 0x%X\n", rc);
-                continue;
-            }
-        }
-
-        // 尝试从当前存储获取应用程序名称
-        if (R_SUCCEEDED(rc = get_app_log_name2(app_id, &g_db[i], &g_cs[i], id, name))) {
-            return rc;
-        }
-    }
-
-    // 如果所有存储都失败了，使用app_id作为名称
-    snprintf(name->str, sizeof(name->str), "%016lX", app_id);
     return rc;
 }
 

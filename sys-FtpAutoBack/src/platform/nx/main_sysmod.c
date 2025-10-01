@@ -1759,10 +1759,10 @@ static void generate_save_archive(u64 tid) {
                             }
                         }
 
-                        // 使用get_app_log_name获取游戏名
+                        // 使用get_app_name获取游戏名
                         NcmContentId content_id = {0};
                         struct AppName app_name = {0};
-                        get_app_log_name(tid, &content_id, &app_name);
+                        get_app_name(tid, &content_id, &app_name);
 
                         if (R_SUCCEEDED(rc)) {
                             log_file_fwrite("已成功创建用户 %s 的存档元数据: %s", username, final_path);
@@ -3382,7 +3382,7 @@ static Result stream_zip_to_webdav(const char* local_zip_path, u64 tid, AccountU
         create_ultrahand_notification("无法获取时间，备份上传失败", 1);
         NcmContentId content_id = {0};
         struct AppName app_name = {0};
-        get_app_log_name(tid, &content_id, &app_name);
+        get_app_name(tid, &content_id, &app_name);
         backuplog_fwrite("云端备份失败，仅备份至本地|%s|%s|0000.00.00@00.00.00", app_name.str, username);
         return -1;
     } else {
@@ -3645,10 +3645,10 @@ static Result stream_zip_to_webdav(const char* local_zip_path, u64 tid, AccountU
         long http_code = 0;
         curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
         
-        // 使用get_app_log_name获取游戏名
+        // 使用get_app_name获取游戏名
         NcmContentId content_id = {0};
         struct AppName app_name = {0};
-        get_app_log_name(tid, &content_id, &app_name);
+        get_app_name(tid, &content_id, &app_name);
 
         if (http_code == 201 || http_code == 200 || http_code == 204) {
             snprintf(debug_buf, sizeof(debug_buf), "WebDAV 上传成功: HTTP %ld, 已上传字节数: %lu", http_code, upload_data.total_uploaded);
