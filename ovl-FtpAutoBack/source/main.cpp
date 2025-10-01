@@ -687,6 +687,7 @@ public:
                     std::vector<TextSegment> coloredAbout = {
                         // 应用标题
                         {entry.game_name, TextColors::CYAN, 24},
+                        {"\n反馈问题Q群：1051287661", TextColors::WHITE, 18},
 
                         {"\n\n日期：", TextColors::CYAN, 20},
                         {"\n• ", TextColors::GRAY, 18},
