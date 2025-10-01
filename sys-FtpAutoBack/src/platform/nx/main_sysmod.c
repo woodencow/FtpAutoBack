@@ -3645,7 +3645,7 @@ static Result stream_zip_to_webdav(const char* local_zip_path, u64 tid, AccountU
             if (backup_notify_enabled) create_ultrahand_notification("备份上传成功", 1);
             
             // 写入备份记录: "上传成功|游戏名|用户名|时间戳" (2表示WebDAV上传成功)
-            backuplog_fwrite("上传备份成功|%s|%s|%s", sanitized_title, username, ntp_timestamp);
+            backuplog_fwrite("云端备份成功|%s|%s|%s", sanitized_title, username, ntp_timestamp);
             
             result = 0;
             
@@ -3657,7 +3657,7 @@ static Result stream_zip_to_webdav(const char* local_zip_path, u64 tid, AccountU
             if (backup_notify_enabled) create_ultrahand_notification("备份上传失败", 2);
             
             // 写入备份记录: "上传失败|游戏名|用户名|时间戳" (3表示WebDAV上传失败)
-            backuplog_fwrite("上传备份失败，仅备份至本地|%s|%s|%s", sanitized_title, username, ntp_timestamp);
+            backuplog_fwrite("云端备份失败，仅备份至本地|%s|%s|%s", sanitized_title, username, ntp_timestamp);
             
             result = -1;
         }
@@ -3672,7 +3672,7 @@ static Result stream_zip_to_webdav(const char* local_zip_path, u64 tid, AccountU
         if (backup_notify_enabled) create_ultrahand_notification("备份上传失败", 2);
         
         // 写入备份记录: "上传失败|游戏名|用户名|时间戳" (3表示WebDAV上传失败)
-        backuplog_fwrite("上传备份失败，仅备份至本地|%s|%s|%s", sanitized_title, username, ntp_timestamp);
+        backuplog_fwrite("云端备份失败，仅备份至本地|%s|%s|%s", sanitized_title, username, ntp_timestamp);
         
         result = -1;
     }
