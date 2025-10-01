@@ -665,8 +665,16 @@ static bool initialize_Curl(void) {
 static bool initialize_WebDAV(void) {
     // 读取WebDAV配置 
     webdav_config.enabled = ini_getbool("Backup-WebDAV", "WebDAV_enabled", 0, INI_PATH);
-    
-    // 初始化WebDAV服务
+
+    int user_len = ini_gets("Backup-WebDAV", "username", "", webdav_config.username, sizeof(webdav_config.username), INI_PATH);
+    int pass_len = ini_gets("Backup-WebDAV", "password", "", webdav_config.password, sizeof(webdav_config.password), INI_PATH);
+
+    if (!user_len && !pass_len) {
+        webdav_config.enabled = false;
+        log_file_write("未设置账户与密码！");
+        return false;
+    }
+
     if (!webdav_config.enabled) {
         log_file_write("WebDAV服务已禁用，");
         return false;
@@ -674,8 +682,6 @@ static bool initialize_WebDAV(void) {
 
     ini_gets("Backup-WebDAV", "origin", "", webdav_config.origin, sizeof(webdav_config.origin), INI_PATH);
     ini_gets("Backup-WebDAV", "basepath", "", webdav_config.basepath, sizeof(webdav_config.basepath), INI_PATH);
-    ini_gets("Backup-WebDAV", "username", "", webdav_config.username, sizeof(webdav_config.username), INI_PATH);
-    ini_gets("Backup-WebDAV", "password", "", webdav_config.password, sizeof(webdav_config.password), INI_PATH);
 
     // 读取高速上传配置
     bool high_speed = ini_getbool("Backup-WebDAV", "high_speed", 0, INI_PATH);
