@@ -1707,7 +1707,7 @@ static void generate_save_archive(u64 tid) {
                     
                     // 获取最近一次WebDAV重命名存档的时间戳和序列号
                     get_latest_webdav_timestamp_and_sequence(username, folder_name, latest_timestamp, sizeof(latest_timestamp), &sequence_num);
-                    
+
                     char final_path[FS_MAX_PATH] = {0};
                     int path_len = snprintf(final_path, sizeof(final_path), "%s/%s/%s/%s_%s_%s_%d.zip", 
                              AUTOBACK_DIR_PATH, username, folder_name, folder_name, username, latest_timestamp, sequence_num);
@@ -1759,7 +1759,7 @@ static void generate_save_archive(u64 tid) {
                                 log_file_fwrite("警告: 无法删除临时文件 %s: 0x%x", temp_path, delete_rc);
                             }
                         }
-                        
+
                         // 使用get_app_log_name获取游戏名
                         NcmContentId content_id = {0};
                         struct AppName app_name = {0};
