@@ -34,12 +34,8 @@ FTPSettingTab::FTPSettingTab() {
         ftpPort->setValue(validatedValue);
         
         // 保存到配置文件
-        if (utils::writeConfigOption("Ftp-Network", "port", validatedValue)) {
-            brls::Application::notify("设置已保存");
-            utils::restartAutoBackup();
-        } else {
-            brls::Application::notify("设置保存失败");
-        }
+        utils::writeConfigOption("Ftp-Network", "port", validatedValue);
+        utils::restartAutoBackup();
     });
     this->addView(ftpPort);
 
@@ -53,12 +49,8 @@ FTPSettingTab::FTPSettingTab() {
         // toggleState true 启用密码 0
         // toggleState false 禁用密码 1
         std::string value = toggleState ? "0" : "1";
-        if (utils::writeConfigOption("Ftp-Login", "anon", value)) {
-            brls::Application::notify("设置已保存");
-            utils::restartAutoBackup();
-        } else {
-            brls::Application::notify("设置保存失败");
-        }
+        utils::writeConfigOption("Ftp-Login", "anon", value);
+        utils::restartAutoBackup();
     });
     this->addView(ftpVerify);
 
@@ -74,12 +66,8 @@ FTPSettingTab::FTPSettingTab() {
         std::string value = ftpUser->getValue();
         // 保存时添加引号
         std::string savedValue = "\"" + value + "\"";
-        if (utils::writeConfigOption("Ftp-Login", "user", savedValue)) {
-            brls::Application::notify("设置已保存");
-            utils::restartAutoBackup();
-        } else {
-            brls::Application::notify("设置保存失败");
-        }
+        utils::writeConfigOption("Ftp-Login", "user", savedValue);
+        utils::restartAutoBackup();
     });
     this->addView(ftpUser);
 
@@ -95,12 +83,34 @@ FTPSettingTab::FTPSettingTab() {
         std::string value = ftpPass->getValue();
         // 保存时添加引号
         std::string savedValue = "\"" + value + "\"";
-        if (utils::writeConfigOption("Ftp-Login", "pass", savedValue)) {
-            brls::Application::notify("设置已保存");
-            utils::restartAutoBackup();
-        } else {
-            brls::Application::notify("设置保存失败");
-        }
+        utils::writeConfigOption("Ftp-Login", "pass", savedValue);
+        utils::restartAutoBackup();
     });
     this->addView(ftpPass);
+
+    // 存档写入权限设置
+    std::string saveWritableValue = utils::readConfigOption("Ftp-Basic Settings", "save_writable", "0");
+    bool saveWritableEnabled = (saveWritableValue == "1");
+    brls::ToggleListItem* saveWritable = new brls::ToggleListItem("允许存档写入", saveWritableEnabled, "可在FTP挂载中修改存档，默认关闭, 避免误操作");
+    saveWritable->setReduceDescriptionSpacing(true);
+    saveWritable->getClickEvent()->subscribe([saveWritable](View* view) {
+        bool toggleState = saveWritable->getToggleState();
+        std::string value = toggleState ? "1" : "0";
+        utils::writeConfigOption("Ftp-Basic Settings", "save_writable", value);
+        utils::restartAutoBackup();
+    });
+    this->addView(saveWritable);
+
+    // 传输时LED闪烁设置
+    std::string ledValue = utils::readConfigOption("Ftp-Basic Settings", "led", "0");
+    bool ledEnabled = (ledValue == "1");
+    brls::ToggleListItem* led = new brls::ToggleListItem("传输时呼吸灯提示", ledEnabled, "传输时通过HOME的呼吸灯提示（Lite不可用）");
+    led->setReduceDescriptionSpacing(true);
+    led->getClickEvent()->subscribe([led](View* view) {
+        bool toggleState = led->getToggleState();
+        std::string value = toggleState ? "1" : "0";
+        utils::writeConfigOption("Ftp-Basic Settings", "led", value);
+        utils::restartAutoBackup();
+    });
+    this->addView(led);
 }

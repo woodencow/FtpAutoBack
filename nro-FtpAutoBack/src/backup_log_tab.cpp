@@ -34,7 +34,7 @@ BackupLogTab::BackupLogTab() : brls::List()
     if (!lines.empty()) {
         std::reverse(lines.begin(), lines.end());
         
-        size_t count = std::min(lines.size(), static_cast<size_t>(10));
+        size_t count = std::min(lines.size(), static_cast<size_t>(66));
         
         for (size_t i = 0; i < count; ++i) {
             utils::BackupLogEntry entry = utils::parseBackupLogEntry(lines[i]);
