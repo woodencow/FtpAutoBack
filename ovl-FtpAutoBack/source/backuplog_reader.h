@@ -9,7 +9,8 @@
  * 格式：结果|游戏名|用户名|时间戳
  */
 struct BackupLogEntry {
-    char result[24];      // 结果字段
+    char result_S[24];      // 短结果字段
+    char result_L[45];      // 长结果字段
     char game_name[64];   // 游戏名字段  
     char username[24];    // 用户名字段
     char date[16];        // 日期字段

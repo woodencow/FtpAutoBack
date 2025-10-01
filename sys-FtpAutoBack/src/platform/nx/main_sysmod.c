@@ -667,8 +667,16 @@ static bool initialize_Curl(void) {
 static bool initialize_WebDAV(void) {
     // 读取WebDAV配置 
     webdav_config.enabled = ini_getbool("Backup-WebDAV", "WebDAV_enabled", 0, INI_PATH);
-    
-    // 初始化WebDAV服务
+
+    int user_len = ini_gets("Backup-WebDAV", "username", "", webdav_config.username, sizeof(webdav_config.username), INI_PATH);
+    int pass_len = ini_gets("Backup-WebDAV", "password", "", webdav_config.password, sizeof(webdav_config.password), INI_PATH);
+
+    if (!user_len && !pass_len) {
+        webdav_config.enabled = false;
+        log_file_write("未设置账户与密码！");
+        return false;
+    }
+
     if (!webdav_config.enabled) {
         log_file_write("WebDAV服务已禁用，");
         return false;
@@ -676,8 +684,6 @@ static bool initialize_WebDAV(void) {
 
     ini_gets("Backup-WebDAV", "origin", "", webdav_config.origin, sizeof(webdav_config.origin), INI_PATH);
     ini_gets("Backup-WebDAV", "basepath", "", webdav_config.basepath, sizeof(webdav_config.basepath), INI_PATH);
-    ini_gets("Backup-WebDAV", "username", "", webdav_config.username, sizeof(webdav_config.username), INI_PATH);
-    ini_gets("Backup-WebDAV", "password", "", webdav_config.password, sizeof(webdav_config.password), INI_PATH);
 
     // 读取高速上传配置
     bool high_speed = ini_getbool("Backup-WebDAV", "high_speed", 0, INI_PATH);
@@ -1703,7 +1709,7 @@ static void generate_save_archive(u64 tid) {
                     
                     // 获取最近一次WebDAV重命名存档的时间戳和序列号
                     get_latest_webdav_timestamp_and_sequence(username, folder_name, latest_timestamp, sizeof(latest_timestamp), &sequence_num);
-                    
+
                     char final_path[FS_MAX_PATH] = {0};
                     int path_len = snprintf(final_path, sizeof(final_path), "%s/%s/%s/%s_%s_%s_%d.zip", 
                              AUTOBACK_DIR_PATH, username, folder_name, folder_name, username, latest_timestamp, sequence_num);
@@ -1755,7 +1761,7 @@ static void generate_save_archive(u64 tid) {
                                 log_file_fwrite("警告: 无法删除临时文件 %s: 0x%x", temp_path, delete_rc);
                             }
                         }
-                        
+
                         // 使用get_app_log_name获取游戏名
                         NcmContentId content_id = {0};
                         struct AppName app_name = {0};

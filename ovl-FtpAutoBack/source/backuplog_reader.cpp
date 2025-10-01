@@ -153,10 +153,19 @@ bool BackuplogReader::parse_log_line(const std::string& line, BackupLogEntry& en
     
     size_t pos3 = line.find('|', pos2 + 1);
     if (pos3 == std::string::npos) return false;
-    
+
     // 提取各个字段
-    strncpy(entry.result, line.c_str(), pos1);
-    entry.result[pos1] = '\0';
+    strncpy(entry.result_L, line.c_str(), pos1);
+    entry.result_L[pos1] = '\0';
+
+    // 然后根据result_L字段设置result_S
+    if (strcmp(entry.result_L, "本地备份成功") == 0 || strcmp(entry.result_L, "上传备份失败，仅备份至本地") == 0)
+        strcpy(entry.result_S, "仅备份");
+    else if (strcmp(entry.result_L, "本地备份失败") == 0)
+        strcpy(entry.result_S, "备份失败");
+    else if (strcmp(entry.result_L, "上传备份成功") == 0)
+        strcpy(entry.result_S, "已上传");
+    else strcpy(entry.result_S, "未知");
     
     strncpy(entry.game_name, line.c_str() + pos1 + 1, pos2 - pos1 - 1);
     entry.game_name[pos2 - pos1 - 1] = '\0';
