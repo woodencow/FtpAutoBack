@@ -407,13 +407,15 @@ Result get_app_name2(u64 app_id, NcmContentMetaDatabase* db, NcmContentStorage* 
     rc = fsFileRead(&file, off, name->str, sizeof(name->str), 0, &bytes_read);
     
     // 如果当前语言没有名称，尝试其他语言
+    // 首先尝试繁体中文，没有的话，就遍历其他语言
     if (name->str[0] == '\0') {
+        off = 13 * sizeof(NacpLanguageEntry); // 繁体中文索引为13
+        rc = fsFileRead(&file, off, name->str, sizeof(name->str), 0, &bytes_read);
+        if (name->str[0] != '\0') break;
         for (int i = 0; i < 16; i++) {
             off = i * sizeof(NacpLanguageEntry);
             rc = fsFileRead(&file, off, name->str, sizeof(name->str), 0, &bytes_read);
-            if (name->str[0] != '\0') {
-                break;
-            }
+            if (name->str[0] != '\0') break;
         }
     }
 
