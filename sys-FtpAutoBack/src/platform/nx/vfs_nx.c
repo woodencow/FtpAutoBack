@@ -408,11 +408,13 @@ Result get_app_name2(u64 app_id, NcmContentMetaDatabase* db, NcmContentStorage* 
     
     // 如果当前语言没有名称，尝试其他语言
     // 首先尝试繁体中文，没有的话，就遍历其他语言
+    // 语言功能可以重构，重构那个映射表来简化这个函数，暂时没空，就先这样，后面再改
     if (name->str[0] == '\0') {
         off = 13 * sizeof(NacpLanguageEntry); // 繁体中文索引为13
         rc = fsFileRead(&file, off, name->str, sizeof(name->str), 0, &bytes_read);
-        if (name->str[0] != '\0') break;
-        for (int i = 0; i < 16; i++) {
+    }
+    if (name->str[0] == '\0') {
+        for (int i = 0; i < 18; i++) {
             off = i * sizeof(NacpLanguageEntry);
             rc = fsFileRead(&file, off, name->str, sizeof(name->str), 0, &bytes_read);
             if (name->str[0] != '\0') break;
