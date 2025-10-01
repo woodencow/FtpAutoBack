@@ -46,8 +46,12 @@ void backuplog_write(const char* msg) {
         len = strlen(msg);
     }
 
-    // 写入内容并立即刷新（追加模式自动写入到文件末尾）
-    fsFileWrite(&log_file, 0, msg, len, FsWriteOption_Flush);
+    // 获取文件大小，用于追加写入
+    s64 file_size = 0;
+    fsFileGetSize(&log_file, &file_size);
+    
+    // 写入内容并立即刷新（写入到文件末尾）
+    fsFileWrite(&log_file, file_size, msg, len, FsWriteOption_Flush);
     // 关闭文件和文件系统
     fsFileClose(&log_file);
     fsFsClose(&fs);
