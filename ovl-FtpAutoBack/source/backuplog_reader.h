@@ -12,7 +12,8 @@ struct BackupLogEntry {
     char result[24];      // 结果字段
     char game_name[64];   // 游戏名字段  
     char username[24];    // 用户名字段
-    char timestamp[24];   // 时间戳字段
+    char date[16];        // 日期字段
+    char time[16];        // 时间字段
 };
 
 /**

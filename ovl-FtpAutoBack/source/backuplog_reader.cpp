@@ -155,23 +155,23 @@ bool BackuplogReader::parse_log_line(const std::string& line, BackupLogEntry& en
     if (pos3 == std::string::npos) return false;
     
     // 提取各个字段
-    std::string result_str = line.substr(0, pos1);
-    std::string game_name_str = line.substr(pos1 + 1, pos2 - pos1 - 1);
-    std::string username_str = line.substr(pos2 + 1, pos3 - pos2 - 1);
-    std::string timestamp_str = line.substr(pos3 + 1);
+    strncpy(entry.result, line.c_str(), pos1);
+    entry.result[pos1] = '\0';
     
-    // 复制到结构体字段，确保不超出缓冲区大小
-    strncpy(entry.result, result_str.c_str(), sizeof(entry.result) - 1);
-    entry.result[sizeof(entry.result) - 1] = '\0';
+    strncpy(entry.game_name, line.c_str() + pos1 + 1, pos2 - pos1 - 1);
+    entry.game_name[pos2 - pos1 - 1] = '\0';
     
-    strncpy(entry.game_name, game_name_str.c_str(), sizeof(entry.game_name) - 1);
-    entry.game_name[sizeof(entry.game_name) - 1] = '\0';
+    strncpy(entry.username, line.c_str() + pos2 + 1, pos3 - pos2 - 1);
+    entry.username[pos3 - pos2 - 1] = '\0';
     
-    strncpy(entry.username, username_str.c_str(), sizeof(entry.username) - 1);
-    entry.username[sizeof(entry.username) - 1] = '\0';
+    // 处理timestamp字段，用@分割日期和时间
+    const char* timestamp_start = line.c_str() + pos3 + 1;
+    const char* at_pos = strchr(timestamp_start, '@');
     
-    strncpy(entry.timestamp, timestamp_str.c_str(), sizeof(entry.timestamp) - 1);
-    entry.timestamp[sizeof(entry.timestamp) - 1] = '\0';
+    strncpy(entry.date, timestamp_start, at_pos - timestamp_start);
+    entry.date[at_pos - timestamp_start] = '\0';
+    
+    strcpy(entry.time, at_pos + 1);
     
     return true;
 }

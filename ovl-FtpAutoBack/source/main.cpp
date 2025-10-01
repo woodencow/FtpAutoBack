@@ -687,15 +687,21 @@ public:
                     std::vector<TextSegment> coloredAbout = {
                         // 应用标题
                         {entry.game_name, TextColors::CYAN, 24},
-                        {"\n", TextColors::GRAY, 18},
-                        {entry.timestamp, TextColors::WHITE, 18},
+
+                        {"\n\n日期：", TextColors::CYAN, 20},
+                        {"\n• ", TextColors::GRAY, 18},
+                        {entry.date, TextColors::WHITE, 18},
+                        {"\n• ", TextColors::GRAY, 18},
+                        {entry.time, TextColors::WHITE, 18},
                         
                         // 用户
-                        {"\n\n用户: ", TextColors::CYAN, 20},
+                        {"\n\n用户：", TextColors::CYAN, 20},
+                        {"\n• ", TextColors::GRAY, 18},
                         {entry.username, TextColors::WHITE, 18},
 
                         // 结果
-                        {"\n\n结果: ", TextColors::CYAN, 20},
+                        {"\n\n结果：", TextColors::CYAN, 20},
+                        {"\n• ", TextColors::GRAY, 18},
                         {entry.result, TextColors::WHITE, 18},
                     };
                     
