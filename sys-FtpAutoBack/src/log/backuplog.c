@@ -68,6 +68,12 @@ void backuplog_init(void) {
     
     // 文件不存在，创建新文件
     if (R_SUCCEEDED(fsFsCreateFile(&g_fs, safe_buf, 0, 0))) {
+        // 确保 /AutoBack 目录存在：不存在则创建
+        Result dir_rc = fsFsCreateDirectory(&g_fs, "/AutoBack");
+        if (!R_SUCCEEDED(dir_rc) && dir_rc != 0x402 /* FSERROR_PATH_ALREADY_EXISTS */) {
+            fsFsClose(&g_fs);
+            return;
+        }
         if (R_SUCCEEDED(fsFsOpenFile(&g_fs, safe_buf, FsOpenMode_Write | FsOpenMode_Append, &g_log_file))) {
             g_file_off = 0;
             g_has_log_file = 1;
