@@ -2,6 +2,7 @@
 #include <tesla.hpp>    // Tesla 头文件
 #include <vector>       // 用于std::vector支持
 #include <minIni.h>     // minIni库用于读取INI配置文件
+#include "backuplog_reader.h"  // 包含备份日志读取器头文件
 
 // ===========================================
 // 全局常量定义
@@ -627,7 +628,104 @@ public:
     }
 };
 
+// 设置页面
+class BackupLogGui : public tsl::Gui {
+private:
+    // 截断游戏名函数：传入char*，返回char*（内部处理缓冲区）
+    char* truncateGameName(const char* gameName) {
+        static char buffer[64]; // 静态缓冲区
+        
+        // 检测是否是ASCII字符串（需要ASCII字符大于4个才判断为ASCII）
+        bool isAscii = false;
+        int asciiCount = 0;
+        for (const char* p = gameName; *p != '\0'; p++) {
+            if ((unsigned char)*p <= 127) {
+                asciiCount++;
+            }
+            if (asciiCount > 4) {
+                isAscii = true;
+                break;
+            }
+        }
+        
+        // 根据字符类型确定截断长度
+        size_t maxLen = 30; // 30字节 汉字
+        if (isAscii) maxLen = 20; // 20个ASCII字符
+        
+        // 使用缓冲区自然截断
+        strncpy(buffer, gameName, maxLen);
+        buffer[maxLen] = '\0';
+        
+        return buffer;
+    }
 
+public:
+    virtual tsl::elm::Element* createUI() override {
+        auto frame = new tsl::elm::OverlayFrame("备份记录", "显示最近的30条记录");
+        auto list = new tsl::elm::List(); // 替换为标准List组件
+        
+        list->addItem(new tsl::elm::CategoryHeader("点击查看详细日志"));
+        // 读取备份日志
+        BackuplogReader reader;
+        auto logEntries = reader.read_last_entries();
+        
+        if (logEntries.empty()) {
+            list->addItem(new tsl::elm::ListItem("暂无备份记录"));
+            frame->setContent(list);
+            return frame;
+        } 
+
+        // 遍历日志条目并添加到列表
+        for (const auto& entry : logEntries) {
+            // 使用截断函数处理游戏名
+            char* truncated_name = truncateGameName(entry.game_name);
+            auto item = new tsl::elm::ListItem(truncated_name, entry.result);
+            item->setClickListener([this, entry](u64 keys) {
+                if (keys & HidNpadButton_A) {
+
+                        // 创建应用关于信息的多彩文本
+                    std::vector<TextSegment> coloredAbout = {
+                        // 应用标题
+                        {entry.game_name, TextColors::CYAN, 24},
+                        {"\n反馈问题Q群：1051287661", TextColors::WHITE, 18},
+
+                        {"\n\n日期：", TextColors::CYAN, 20},
+                        {"\n• ", TextColors::GRAY, 18},
+                        {entry.date, TextColors::WHITE, 18},
+                        {"\n• ", TextColors::GRAY, 18},
+                        {entry.time, TextColors::WHITE, 18},
+                        
+                        // 用户
+                        {"\n\n用户：", TextColors::CYAN, 20},
+                        {"\n• ", TextColors::GRAY, 18},
+                        {entry.username, TextColors::WHITE, 18},
+
+                        // 结果
+                        {"\n\n结果：", TextColors::CYAN, 20},
+                        {"\n• ", TextColors::GRAY, 18},
+                        {entry.result, TextColors::WHITE, 18},
+                    };
+                    
+                    // 跳转到关于页面
+                    tsl::changeTo<TextDisplayGui>("详细记录", GLOBAL_APP_VERSION, coloredAbout);
+                    return true;
+                }
+                return false;
+            });
+            list->addItem(item);
+
+        }
+
+
+        frame->setContent(list);
+        return frame;
+    }
+    
+    virtual void update() override { }
+    virtual bool handleInput(u64 keysDown, u64 keysHeld, const HidTouchState &touchPos, HidAnalogStickState joyStickPosLeft, HidAnalogStickState joyStickPosRight) override {
+        return false;
+    }
+};
 
 // 设置页面
 class BackupSettingsGui : public tsl::Gui {
@@ -1135,6 +1233,17 @@ public:
             return false;
         });
         list->addItem(WebDAVItem);
+
+        auto backuplogItem = new tsl::elm::ListItem("备份记录");
+        backuplogItem->setClickListener([](u64 keys) {
+            if (keys & HidNpadButton_A) {
+                tsl::changeTo<BackupLogGui>(); // 直接跳转到备份日志页面
+                return true;
+            }
+            return false;
+        });
+        list->addItem(backuplogItem);
+
         auto backupItem = new tsl::elm::ListItem("备份设置");
         backupItem->setClickListener([](u64 keys) {
             if (keys & HidNpadButton_A) {
@@ -1144,6 +1253,8 @@ public:
             return false;
         });
         list->addItem(backupItem);
+
+        
 
         // 设置内容并返回
         frame->setContent(list);
@@ -1164,8 +1275,12 @@ public:
         nifmInitialize(NifmServiceType_User);
         // 初始化pmshell服务用于管理模块
         pmshellInitialize();
+        // 挂载SD卡文件系统，确保文件访问正常
+        fsdevMountSdmc();
     }
     virtual void exitServices() override {   // 在结束时调用以清理之前初始化的所有服务
+        // 卸载SD卡文件系统
+        fsdevUnmountDevice("sdmc");
         // 清理pmshell服务
         pmshellExit();
         // 清理nifm服务
