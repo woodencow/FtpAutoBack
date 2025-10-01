@@ -318,13 +318,14 @@ int main(void) {
 
     // 只有初始化用户目录成功才执行
     // 先初始化curl，成功则初始化WebDAV
-    // 无论curl初始化是否成功，都启动自动备份线程
+    // 无论curl初始化是否成功，都启动自动备份线程,和备份日志
     bool curl_init_rc = false;
     bool auto_backup_thread_state = false;
     if (auto_backup_dir_init) {
         curl_init_rc = initialize_Curl();
         if (!curl_init_rc) webdav_config.enabled = false;
         else initialize_WebDAV();
+        backuplog_init();
         auto_backup_thread_state = initialize_AutoBack_Thread();
     } else log_file_write("初始化用户列表失败，禁止启用备份功能！");
     // ====初始化自动备份完成====
@@ -433,8 +434,6 @@ void __appExit(void) {
  * @return true 日志初始化成功，false 日志初始化失败
  */
 static bool initialize_log(void) {
-    // 备份功能的日志强制开启
-    backuplog_init();
 
     // 调试用的日志，可配置开启
     bool log_enabled = ini_getbool("Common", "log", 0, INI_PATH);
