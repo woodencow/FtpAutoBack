@@ -858,7 +858,7 @@ public:
                 // 切换自动上传开关
                 bool new_WebDAV_enabled = !ini_getbool("Backup-WebDAV", "WebDAV_enabled", 0, CONFIG_FILE_PATH);
                 WebDAV_enabledItem->setValue(new_WebDAV_enabled ? "开" : "关");
-                ini_putl("Backup-WebDAV", "eWebDAV_enabled", new_WebDAV_enabled ? 1 : 0, CONFIG_FILE_PATH);
+                ini_putl("Backup-WebDAV", "WebDAV_enabled", new_WebDAV_enabled ? 1 : 0, CONFIG_FILE_PATH);
                 g_restartItem->setValue("需要重启");
                 return true;
             }
