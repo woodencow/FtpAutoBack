@@ -1759,7 +1759,7 @@ static void generate_save_archive(u64 tid) {
                             }
                         }
 
-                        // 使用get_app_name获取游戏名 
+                        // 使用get_app_name获取游戏名    
                         NcmContentId content_id = {0};
                         struct AppName app_name = {0};
                         get_app_name(tid, &content_id, &app_name);
