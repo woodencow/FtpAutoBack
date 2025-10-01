@@ -3376,6 +3376,11 @@ static Result stream_zip_to_webdav(const char* local_zip_path, u64 tid, AccountU
         char debug_buf[256] = {0};
         snprintf(debug_buf, sizeof(debug_buf), "NTP时间不可用, 跳过WebDAV上传");
         log_file_write(debug_buf);
+        if (backup_notify_enabled) create_ultrahand_notification("无法获取时间，备份上传失败", 1);
+        NcmContentId content_id = {0};
+        struct AppName app_name = {0};
+        get_app_log_name(tid, &content_id, &app_name);
+        backuplog_fwrite("云端备份失败，仅备份至本地|%s|%s|0000.00.00@00.00.00", app_name.str, username);
         return -1;
     } else {
         // 使用NTP时间戳
@@ -3637,6 +3642,11 @@ static Result stream_zip_to_webdav(const char* local_zip_path, u64 tid, AccountU
         long http_code = 0;
         curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
         
+        // 使用get_app_log_name获取游戏名
+        NcmContentId content_id = {0};
+        struct AppName app_name = {0};
+        get_app_log_name(tid, &content_id, &app_name);
+
         if (http_code == 201 || http_code == 200 || http_code == 204) {
             snprintf(debug_buf, sizeof(debug_buf), "WebDAV 上传成功: HTTP %ld, 已上传字节数: %lu", http_code, upload_data.total_uploaded);
             log_file_write(debug_buf);
@@ -3645,7 +3655,7 @@ static Result stream_zip_to_webdav(const char* local_zip_path, u64 tid, AccountU
             if (backup_notify_enabled) create_ultrahand_notification("备份上传成功", 1);
             
             // 写入备份记录: "上传成功|游戏名|用户名|时间戳" (2表示WebDAV上传成功)
-            backuplog_fwrite("云端备份成功|%s|%s|%s", sanitized_title, username, ntp_timestamp);
+            backuplog_fwrite("云端备份成功|%s|%s|%s", app_name.str, username, ntp_timestamp);
             
             result = 0;
             
@@ -3657,7 +3667,7 @@ static Result stream_zip_to_webdav(const char* local_zip_path, u64 tid, AccountU
             if (backup_notify_enabled) create_ultrahand_notification("备份上传失败", 2);
             
             // 写入备份记录: "上传失败|游戏名|用户名|时间戳" (3表示WebDAV上传失败)
-            backuplog_fwrite("云端备份失败，仅备份至本地|%s|%s|%s", sanitized_title, username, ntp_timestamp);
+            backuplog_fwrite("云端备份失败，仅备份至本地|%s|%s|%s", app_name.str, username, ntp_timestamp);
             
             result = -1;
         }
