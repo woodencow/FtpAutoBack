@@ -15,12 +15,8 @@ WebDAVSettingTab::WebDAVSettingTab() {
     webdavOrigin->setReduceDescriptionSpacing(true);
     webdavOrigin->getClickEvent()->subscribe([webdavOrigin](View* view) {
         std::string value = webdavOrigin->getValue();
-        if (utils::writeConfigOption("Backup-WebDAV", "origin", value)) {
-            brls::Application::notify("设置已保存");
-            utils::restartAutoBackup();
-        } else {
-            brls::Application::notify("设置保存失败");
-        }
+        utils::writeConfigOption("Backup-WebDAV", "origin", value);
+        utils::restartAutoBackup();
     });
     this->addView(webdavOrigin);
 
@@ -30,12 +26,8 @@ WebDAVSettingTab::WebDAVSettingTab() {
     webdavBasePath->setReduceDescriptionSpacing(true);
     webdavBasePath->getClickEvent()->subscribe([webdavBasePath](View* view) {
         std::string value = webdavBasePath->getValue();
-        if (utils::writeConfigOption("Backup-WebDAV", "basepath", value)) {
-            brls::Application::notify("设置已保存");
-            utils::restartAutoBackup();
-        } else {
-            brls::Application::notify("设置保存失败");
-        }
+        utils::writeConfigOption("Backup-WebDAV", "basepath", value);
+        utils::restartAutoBackup();
     });
     this->addView(webdavBasePath);
 
@@ -51,12 +43,8 @@ WebDAVSettingTab::WebDAVSettingTab() {
         std::string value = webdavUsername->getValue();
         // 保存时添加引号
         std::string savedValue = "\"" + value + "\"";
-        if (utils::writeConfigOption("Backup-WebDAV", "username", savedValue)) {
-            brls::Application::notify("设置已保存");
-            utils::restartAutoBackup();
-        } else {
-            brls::Application::notify("设置保存失败");
-        }
+        utils::writeConfigOption("Backup-WebDAV", "username", savedValue);
+        utils::restartAutoBackup();
     });
     this->addView(webdavUsername);
 
@@ -72,12 +60,8 @@ WebDAVSettingTab::WebDAVSettingTab() {
         std::string value = webdavPassword->getValue();
         // 保存时添加引号
         std::string savedValue = "\"" + value + "\"";
-        if (utils::writeConfigOption("Backup-WebDAV", "password", savedValue)) {
-            brls::Application::notify("设置已保存");
-            utils::restartAutoBackup();
-        } else {
-            brls::Application::notify("设置保存失败");
-        }
+        utils::writeConfigOption("Backup-WebDAV", "password", savedValue);
+        utils::restartAutoBackup();
     });
     this->addView(webdavPassword);
     

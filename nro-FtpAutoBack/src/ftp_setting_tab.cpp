@@ -34,12 +34,8 @@ FTPSettingTab::FTPSettingTab() {
         ftpPort->setValue(validatedValue);
         
         // 保存到配置文件
-        if (utils::writeConfigOption("Ftp-Network", "port", validatedValue)) {
-            brls::Application::notify("设置已保存");
-            utils::restartAutoBackup();
-        } else {
-            brls::Application::notify("设置保存失败");
-        }
+        utils::writeConfigOption("Ftp-Network", "port", validatedValue);
+        utils::restartAutoBackup();
     });
     this->addView(ftpPort);
 
@@ -53,12 +49,8 @@ FTPSettingTab::FTPSettingTab() {
         // toggleState true 启用密码 0
         // toggleState false 禁用密码 1
         std::string value = toggleState ? "0" : "1";
-        if (utils::writeConfigOption("Ftp-Login", "anon", value)) {
-            brls::Application::notify("设置已保存");
-            utils::restartAutoBackup();
-        } else {
-            brls::Application::notify("设置保存失败");
-        }
+        utils::writeConfigOption("Ftp-Login", "anon", value);
+        utils::restartAutoBackup();
     });
     this->addView(ftpVerify);
 
@@ -74,12 +66,8 @@ FTPSettingTab::FTPSettingTab() {
         std::string value = ftpUser->getValue();
         // 保存时添加引号
         std::string savedValue = "\"" + value + "\"";
-        if (utils::writeConfigOption("Ftp-Login", "user", savedValue)) {
-            brls::Application::notify("设置已保存");
-            utils::restartAutoBackup();
-        } else {
-            brls::Application::notify("设置保存失败");
-        }
+        utils::writeConfigOption("Ftp-Login", "user", savedValue);
+        utils::restartAutoBackup();
     });
     this->addView(ftpUser);
 
@@ -95,12 +83,8 @@ FTPSettingTab::FTPSettingTab() {
         std::string value = ftpPass->getValue();
         // 保存时添加引号
         std::string savedValue = "\"" + value + "\"";
-        if (utils::writeConfigOption("Ftp-Login", "pass", savedValue)) {
-            brls::Application::notify("设置已保存");
-            utils::restartAutoBackup();
-        } else {
-            brls::Application::notify("设置保存失败");
-        }
+        utils::writeConfigOption("Ftp-Login", "pass", savedValue);
+        utils::restartAutoBackup();
     });
     this->addView(ftpPass);
 }

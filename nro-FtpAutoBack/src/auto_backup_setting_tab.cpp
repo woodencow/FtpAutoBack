@@ -10,20 +10,29 @@ AutoBackupSettingTab::AutoBackupSettingTab() {
     this->addView(new brls::Header("自动备份设置"));
     this->addView(new brls::Label(brls::LabelStyle::DESCRIPTION, "修改自动备份相关设置", true));
 
+    // 启用自动备份功能开关
+    std::string autoBackupEnabled = utils::readConfigOption("Backup-Basic Settings", "auto_backup_enabled", "1");
+    bool enabled = (autoBackupEnabled == "1");
+    brls::ToggleListItem* autoBackupEnable = new brls::ToggleListItem("启用自动备份", enabled, "是否启用自动备份功能");
+    autoBackupEnable->setReduceDescriptionSpacing(true);
+    autoBackupEnable->getClickEvent()->subscribe([autoBackupEnable](View* view) {
+        bool toggleState = autoBackupEnable->getToggleState();
+        std::string value = toggleState ? "1" : "0";
+        utils::writeConfigOption("Backup-Basic Settings", "auto_backup_enabled", value);
+        utils::restartAutoBackup();
+    });
+    this->addView(autoBackupEnable);
+
     // 自动备份上传开关
     std::string webdavEnabled = utils::readConfigOption("Backup-WebDAV", "WebDAV_enabled", "0");
-    bool enabled = (webdavEnabled == "1");
-    brls::ToggleListItem* backupEnable = new brls::ToggleListItem("启用自动备份上传", enabled, "自动上传到配置的Webdav服务器");
+    bool webdavEnabledState = (webdavEnabled == "1");
+    brls::ToggleListItem* backupEnable = new brls::ToggleListItem("启用自动备份上传", webdavEnabledState, "自动上传到配置的Webdav服务器");
     backupEnable->setReduceDescriptionSpacing(true);
     backupEnable->getClickEvent()->subscribe([backupEnable](View* view) {
         bool toggleState = backupEnable->getToggleState();
         std::string value = toggleState ? "1" : "0";
-        if (utils::writeConfigOption("Backup-WebDAV", "WebDAV_enabled", value)) {
-            brls::Application::notify("设置已保存");
-            utils::restartAutoBackup();
-        } else {
-            brls::Application::notify("设置保存失败");
-        }
+        utils::writeConfigOption("Backup-WebDAV", "WebDAV_enabled", value);
+        utils::restartAutoBackup();
     });
     this->addView(backupEnable);
 
@@ -56,14 +65,34 @@ AutoBackupSettingTab::AutoBackupSettingTab() {
         // 更新输入框显示的值
         Maxbackup->setValue(validatedValue);
         
-        if (utils::writeConfigOption("Backup-Basic Settings", "maxback", validatedValue)) {
-            brls::Application::notify("设置已保存");
-            utils::restartAutoBackup();
-        } else {
-            brls::Application::notify("设置保存失败");
-        }
+        utils::writeConfigOption("Backup-Basic Settings", "maxback", validatedValue);
+        utils::restartAutoBackup();
     });
     this->addView(Maxbackup);
+
+    // 备份时LED闪烁设置
+    std::string backupLed = utils::readConfigOption("Backup-Basic Settings", "backup_led", "0");
+    bool ledEnabled = (backupLed == "1");
+    brls::ToggleListItem* backupLedToggle = new brls::ToggleListItem("备份时呼吸灯提示", ledEnabled, "备份时是否通过呼吸等提示（Lite不可用）");
+    backupLedToggle->setReduceDescriptionSpacing(true);
+    backupLedToggle->getClickEvent()->subscribe([backupLedToggle](View* view) {
+        bool toggleState = backupLedToggle->getToggleState();
+        std::string value = toggleState ? "1" : "0";
+        utils::writeConfigOption("Backup-Basic Settings", "backup_led", value);
+    });
+    this->addView(backupLedToggle);
+
+    // 备份时弹窗通知设置
+    std::string backupNotify = utils::readConfigOption("Backup-Basic Settings", "backup_notify", "0");
+    bool notifyEnabled = (backupNotify == "1");
+    brls::ToggleListItem* backupNotifyToggle = new brls::ToggleListItem("备份时弹窗通知", notifyEnabled, "备份时是否弹窗通知（需要配合Ultrahand 2.1.0+）");
+    backupNotifyToggle->setReduceDescriptionSpacing(true);
+    backupNotifyToggle->getClickEvent()->subscribe([backupNotifyToggle](View* view) {
+        bool toggleState = backupNotifyToggle->getToggleState();
+        std::string value = toggleState ? "1" : "0";
+        utils::writeConfigOption("Backup-Basic Settings", "backup_notify", value);
+    });
+    this->addView(backupNotifyToggle);
 
     // 备份服务器设置
     brls::ListItem* WebdavCFG = new brls::ListItem("云同步服务器", "配置Webdav服务器");
