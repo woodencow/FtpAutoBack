@@ -802,7 +802,7 @@ public:
         bool skip_ascii_convert = ini_getbool("Common", "skip_ascii_convert", 0, CONFIG_FILE_PATH);
         bool WebDAV_enabled = ini_getbool("Backup-WebDAV", "WebDAV_enabled", 0, CONFIG_FILE_PATH);
         bool auto_backup = ini_getbool("Backup-Basic Settings", "auto_backup_enabled", 0, CONFIG_FILE_PATH);
-        bool back_led_enabled = ini_getbool("Backup-Basic Settings", "back_led", 0, CONFIG_FILE_PATH);
+        bool back_led_enabled = ini_getbool("Backup-Basic Settings", "backup_led", 0, CONFIG_FILE_PATH);
         bool high_speed = ini_getbool("Backup-WebDAV", "high_speed", 0, CONFIG_FILE_PATH);
 
         list->addItem(new tsl::elm::CategoryHeader("自动备份设置"));
@@ -870,9 +870,9 @@ public:
         back_led_enabledItem->setClickListener([back_led_enabledItem](u64 keys) {
             if (keys & HidNpadButton_A) {
                 // 切换备份LED提示开关
-                bool new_back_led_enabled = !ini_getbool("Backup-Basic Settings", "back_led", 0, CONFIG_FILE_PATH);
+                bool new_back_led_enabled = !ini_getbool("Backup-Basic Settings", "backup_led", 0, CONFIG_FILE_PATH);
                 back_led_enabledItem->setValue(new_back_led_enabled ? "开" : "关");
-                ini_putl("Backup-Basic Settings", "back_led", new_back_led_enabled ? 1 : 0, CONFIG_FILE_PATH);
+                ini_putl("Backup-Basic Settings", "backup_led", new_back_led_enabled ? 1 : 0, CONFIG_FILE_PATH);
                 g_restartItem->setValue("需要重启");
                 return true;
             }
