@@ -679,7 +679,7 @@ public:
         for (const auto& entry : logEntries) {
             // 使用截断函数处理游戏名
             char* truncated_name = truncateGameName(entry.game_name);
-            auto item = new tsl::elm::ListItem(truncated_name, entry.result);
+            auto item = new tsl::elm::ListItem(truncated_name, entry.result_S);
             item->setClickListener([this, entry](u64 keys) {
                 if (keys & HidNpadButton_A) {
 
@@ -703,7 +703,7 @@ public:
                         // 结果
                         {"\n\n结果：", TextColors::CYAN, 20},
                         {"\n• ", TextColors::GRAY, 18},
-                        {entry.result, TextColors::WHITE, 18},
+                        {entry.result_L, TextColors::WHITE, 18},
                     };
                     
                     // 跳转到关于页面
