@@ -533,7 +533,7 @@ static bool initialize_AutoBack_DIR(void) {
 
     // 暂时没别的地方放了，临时放这里吧。
     g_maxback = ini_getl("Backup-Basic Settings", "maxback", 0, INI_PATH);  // 最大备份数量
-    g_back_led_enabled = ini_getbool("Backup-Basic Settings", "back_led", 0, INI_PATH);  // LED提示
+    g_back_led_enabled = ini_getbool("Backup-Basic Settings", "backup_led", 0, INI_PATH);  // LED提示
 
     // 创建AutoBack文件夹
     FsFileSystem* sdmc_fs = fsdev_wrapGetDeviceFileSystem("sdmc");
