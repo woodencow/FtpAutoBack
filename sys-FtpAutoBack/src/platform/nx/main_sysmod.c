@@ -229,7 +229,7 @@ static void ftp_progress_callback(void);
 static Result get_current_tid(u64* tid);
 static bool update_user_uid_name(void);
 static u64 Get_Current_Commit_Id(u64 current_tid);
-static void create_game_folder(u64 tid);
+static bool create_game_folder(u64 tid);
 static void generate_save_archive(u64 tid);
 
 // 存档文件管理
@@ -1521,7 +1521,7 @@ static u64 Get_Current_Commit_Id(u64 current_tid) {
 }
 
 static void create_game_folder(u64 tid) {
-    if (tid == 0) return;
+    if (tid == 0) return false;
     
     // 获取游戏名称
     NcmContentId content_id = {0};
@@ -1552,11 +1552,14 @@ static void create_game_folder(u64 tid) {
 
     // 使用递归创建，会依次创建每一级目录
     Result mkdir_rc = createDirectory(game_folder_path);
-    if (R_SUCCEEDED(mkdir_rc)) {
-        log_file_fwrite("已成功创建游戏文件夹: %s", game_folder_path);
-    } else {
+    if (R_FAILED(mkdir_rc)) {
         log_file_fwrite("警告: 无法创建游戏文件夹 %s: 0x%x", game_folder_path, mkdir_rc);
+        return false;
     }
+    
+    log_file_fwrite("已成功创建游戏文件夹: %s", game_folder_path);
+
+    return true;
 
 }
 
