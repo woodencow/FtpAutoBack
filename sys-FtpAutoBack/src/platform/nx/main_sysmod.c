@@ -1520,7 +1520,7 @@ static u64 Get_Current_Commit_Id(u64 current_tid) {
 
 }
 
-static void create_game_folder(u64 tid) {
+static bool create_game_folder(u64 tid) {
     if (tid == 0) return false;
     
     // 获取游戏名称
@@ -1564,7 +1564,6 @@ static void create_game_folder(u64 tid) {
 }
 
 static void generate_save_archive(u64 tid) {
-    if (tid == 0) return;
     
     // 添加调试日志：开始生成存档
     log_file_fwrite("准备为 TID: %016lX 生成存档", tid);
@@ -1574,12 +1573,6 @@ static void generate_save_archive(u64 tid) {
     
     // 创建游戏文件夹
     create_game_folder(tid);
-    
-    // 只处理当前运行游戏的用户
-    if (g_current_game_user_uid.uid[0] == 0 && g_current_game_user_uid.uid[1] == 0) {
-        log_file_fwrite("警告: 未检测到当前运行游戏的用户，跳过为 TID: %016lX 生成存档", tid);
-        return;
-    }
     
     // 使用全局变量中的用户信息
     AccountUid target_user = g_current_game_user_uid;
