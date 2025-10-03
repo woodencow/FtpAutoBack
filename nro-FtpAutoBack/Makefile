@@ -39,10 +39,11 @@ include $(DEVKITPRO)/libnx/switch_rules
 #---------------------------------------------------------------------------------
 TARGET		:=	AUTOBackup-manager
 BUILD		:=	build.nx
-SOURCES		:=	src src/utils lib/simpleiniparser/source/SimpleIniParser
+SOURCES		:=	src src/utils lib/minIni-nx/source
 RESOURCES	:=	resources
 DATA		:=	data
-INCLUDES	:=	src src/utils lib/simpleiniparser/include lib/simpleiniparser/include/SimpleIniParser
+INCLUDES	:=	src src/utils lib/minIni-nx/include
+
 APP_TITLE	:=	AUTOBackup manager
 APP_AUTHOR	:=	Hahappify PTTSCY
 

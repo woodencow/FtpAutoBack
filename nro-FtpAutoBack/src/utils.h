@@ -6,6 +6,11 @@
 
 #define CONFIG_FILE "sdmc:/config/ftpsrv/config.ini"
 
+// 添加minIni-nx库的包含
+extern "C" {
+#include <minIni.h>
+}
+
 namespace utils {
     
     /**

@@ -56,34 +56,22 @@ FTPSettingTab::FTPSettingTab() {
 
     // FTP用户名设置
     std::string userValue = utils::readConfigOption("Ftp-Login", "user", "user");
-    // 移除可能存在的引号用于显示
-    if (!userValue.empty() && userValue.front() == '"' && userValue.back() == '"') {
-        userValue = userValue.substr(1, userValue.length() - 2);
-    }
     brls::InputListItem* ftpUser = new brls::InputListItem("用户名", userValue, "", "设置FTP验证用户名");
     ftpUser->setReduceDescriptionSpacing(true);
     ftpUser->getClickEvent()->subscribe([ftpUser](View* view) {
         std::string value = ftpUser->getValue();
-        // 保存时添加引号
-        std::string savedValue = "\"" + value + "\"";
-        utils::writeConfigOption("Ftp-Login", "user", savedValue);
+        utils::writeConfigOption("Ftp-Login", "user", value);
         utils::restartAutoBackup();
     });
     this->addView(ftpUser);
 
     // FTP密码设置
     std::string passValue = utils::readConfigOption("Ftp-Login", "pass", "1234567890");
-    // 移除可能存在的引号用于显示
-    if (!passValue.empty() && passValue.front() == '"' && passValue.back() == '"') {
-        passValue = passValue.substr(1, passValue.length() - 2);
-    }
     brls::InputListItem* ftpPass = new brls::InputListItem("密码", passValue, "", "设置FTP验证密码");
     ftpPass->setReduceDescriptionSpacing(true);
     ftpPass->getClickEvent()->subscribe([ftpPass](View* view) {
         std::string value = ftpPass->getValue();
-        // 保存时添加引号
-        std::string savedValue = "\"" + value + "\"";
-        utils::writeConfigOption("Ftp-Login", "pass", savedValue);
+        utils::writeConfigOption("Ftp-Login", "pass", value);
         utils::restartAutoBackup();
     });
     this->addView(ftpPass);
