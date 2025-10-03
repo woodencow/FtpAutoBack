@@ -230,7 +230,8 @@ static Result get_current_tid(u64* tid);
 static bool update_user_uid_name(void);
 static u64 Get_Current_Commit_Id(u64 current_tid);
 static bool create_game_folder(u64 tid);
-static bool generate_save_archive(u64 tid);
+static bool generate_save_archive(u64 tid, char* out_zip_path);
+static void Get_Save_And_Upload();
 
 // 存档文件管理
 static time_t parse_timestamp_from_filename(const char* filename, int* sequence);
@@ -254,7 +255,7 @@ static size_t webdav_upload_read_callback(void* ptr, size_t size, size_t nmemb, 
 static void get_latest_webdav_timestamp_and_sequence(const char* username, const char* folder_name, 
                                                      char* latest_timestamp, size_t timestamp_size, 
                                                      int* sequence_num);
-static Result stream_zip_to_webdav(const char* local_zip_path, u64 tid, AccountUid user_uid, const char* username);
+static Result stream_zip_to_webdav(const char* local_zip_path, u64 tid);
 
 // ========== 用户界面与通知 ==========
 // LED效果控制
@@ -665,13 +666,15 @@ static bool initialize_Curl(void) {
 }
 
 static bool initialize_WebDAV(void) {
+
     // 读取WebDAV配置 
     webdav_config.enabled = ini_getbool("Backup-WebDAV", "WebDAV_enabled", 0, INI_PATH);
-
     int user_len = ini_gets("Backup-WebDAV", "username", "", webdav_config.username, sizeof(webdav_config.username), INI_PATH);
     int pass_len = ini_gets("Backup-WebDAV", "password", "", webdav_config.password, sizeof(webdav_config.password), INI_PATH);
+    int origin_len = ini_gets("Backup-WebDAV", "origin", "", webdav_config.origin, sizeof(webdav_config.origin), INI_PATH);
+    int basepath_len = ini_gets("Backup-WebDAV", "basepath", "", webdav_config.basepath, sizeof(webdav_config.basepath), INI_PATH);
 
-    if (!user_len && !pass_len) {
+    if (!user_len && !pass_len && !origin_len && !basepath_len) {
         webdav_config.enabled = false;
         log_file_write("未设置账户与密码！");
         return false;
@@ -682,18 +685,13 @@ static bool initialize_WebDAV(void) {
         return false;
     }
 
-    ini_gets("Backup-WebDAV", "origin", "", webdav_config.origin, sizeof(webdav_config.origin), INI_PATH);
-    ini_gets("Backup-WebDAV", "basepath", "", webdav_config.basepath, sizeof(webdav_config.basepath), INI_PATH);
-
     // 读取高速上传配置
     bool high_speed = ini_getbool("Backup-WebDAV", "high_speed", 0, INI_PATH);
 
     // 根据high_speed值动态设置缓冲区大小
     g_webdav_tcp_buffer_max_size = high_speed ? 0x20000 : 0x8000;  // true=128KB, false=32KB
 
-    char webdav_log_buf[128];
-    snprintf(webdav_log_buf, sizeof(webdav_log_buf), "WebDAV服务已启用。地址: %s, 路径: %s, 用户: %s", webdav_config.origin, webdav_config.basepath, webdav_config.username);
-    log_file_write(webdav_log_buf);
+    log_file_fwrite("WebDAV服务已启用。地址: %s, 路径: %s, 用户: %s", webdav_config.origin, webdav_config.basepath, webdav_config.username);
 
     return true;
    
@@ -864,7 +862,7 @@ static void cleanup_bsd_sockets(void) {
     if (g_bsd_initialized) {
         bsdExit();
         g_bsd_initialized = false;
-        log_file_write("BSD sockets cleaned up");
+        log_file_write("BSD套接字已清理！");
     }
 }
 
@@ -887,12 +885,9 @@ static Result initialize_standard_sockets(void) {
     Result rc = socketInitialize(&webdav_socket_config);
     if (R_SUCCEEDED(rc)) {
         g_standard_socket_initialized = true;
-        log_file_write("Standard sockets initialized successfully");
-    } else {
-        char error_buf[256];
-        snprintf(error_buf, sizeof(error_buf), "Failed to initialize standard sockets: 0x%x", rc);
-        log_file_write(error_buf);
-    }
+        log_file_write("标准套接字已初始化成功！");
+    } else log_file_fwrite("初始化标准套接字失败，错误码: 0x%x", rc);
+        
     
     return rc;
 }
@@ -1089,17 +1084,22 @@ static time_t get_ntp_time(void) {
 
 // 服务模式切换
 Result switch_to_webdav_mode(void) {
-    log_file_write("Switching to WebDAV mode...");
+    log_file_write("开始切换到WebDAV模式...");
     
     // 清理BSD套接字
     cleanup_bsd_sockets();
-    
+
+    // 延迟一小会，避免切换过快导致问题
+    svcSleepThread(50000000LL); // 50ms
+
     // 初始化标准套接字
     Result rc = initialize_standard_sockets();
     if (R_SUCCEEDED(rc)) {
         g_webdav_handshake_in_progress = true;
-        log_file_write("Successfully switched to WebDAV mode");
-    }
+        log_file_write("已成功切换到WebDAV模式！");
+        // 延迟100ms，标准套接字生效
+        svcSleepThread(100000000LL); // 100ms
+    } else log_file_fwrite("无法切换到WebDAV模式！错误码: 0x%x", rc);
     
     return rc;
 }
@@ -1111,23 +1111,19 @@ Result switch_to_ftp_mode(void) {
     cleanup_standard_sockets();
     
     // 添加额外延迟确保资源完全释放
-    svcSleepThread(50000000LL); // 50ms
+    svcSleepThread(100000000LL); // 100ms
     
     // 初始化BSD套接字
     Result rc = initialize_bsd_sockets();
     if (R_FAILED(rc)) {
-        // BSD套接字初始化失败，也需要重置状态防止死锁
-        char error_buf[128];
-        snprintf(error_buf, sizeof(error_buf), "初始化BSD套接字失败,无法切换到FTP模式: 0x%x", rc);
-        log_file_write(error_buf);
-        log_file_write("BSD套接字初始化失败，已强制重置WebDAV握手状态以防止死锁");
-        g_webdav_handshake_in_progress = false;
-        return rc;
+        log_file_fwrite("初始化BSD套接字失败,无法切换到FTP模式: 0x%x", rc);
+        log_file_write("BSD套接字初始化失败，强制关闭WebDAV握手状态以防止死锁");
+        goto end;
     }
 
     log_file_write("初始化BSD套接字成功！");
-    // 确保状态完全同步
-    svcSleepThread(50000000LL); // 额外50ms确保状态同步
+    // 额外100ms确保状态同步
+    svcSleepThread(100000000LL); 
 
     // 初始化完成，需要验证套接字
     bool socket_ready = false;
@@ -1143,30 +1139,22 @@ Result switch_to_ftp_mode(void) {
         }
         
         retry_count++;
-        char retry_log[128];
-        snprintf(retry_log, sizeof(retry_log), 
-                    "正在验证套接字与网络是否就绪，第%d/%d次重试", 
-                    retry_count, max_retries);
-        log_file_write(retry_log);
+        log_file_fwrite("正在验证套接字与网络是否就绪，第%d/%d次重试", retry_count, max_retries);
         
         // 等待后重试
         svcSleepThread(retry_delay_ms * 1000000LL);
     }
     
-    // 重置握手状态
-    g_webdav_handshake_in_progress = false;
-
     if (socket_ready) {
-        log_file_write("套接字验证成功，WebDAV握手状态已重置");
-        log_file_write("自动备份线程可以重新开始TID监控");
+        log_file_write("套接字验证成功，成功切换回FTP模式！");
+        log_file_write("自动备份线程可以重新开始TID监控！");
     } else {
-        char warning_log[128];
-        snprintf(warning_log, sizeof(warning_log), "套接字验证失败，已重试%d次，强制重置WebDAV状态以防止死锁", max_retries);
-        log_file_write(warning_log);
-        log_file_write("已强制重置WebDAV握手状态，自动备份线程将继续监控TID");
+        log_file_fwrite("套接字验证失败，已重试%d次，强制重置WebDAV状态以防止死锁", max_retries);
         log_file_write("注意：网络连接可能不稳定，但是TID监控将继续进行");
     }
     
+end:
+    if (g_webdav_handshake_in_progress) g_webdav_handshake_in_progress = false;
     return rc;
 }
 
@@ -1261,8 +1249,25 @@ static void auto_backup_thread(void* arg) {
                     create_ultrahand_notification("存档已变化，开始备份", 1);
                     log_file_fwrite("开始创建游戏 %016lX 的存档备份 - CommitID 变化次数: %d", g_previous_game_tid, commit_change_count);
 
+
+                    // 生成本地存档和上传到WebDAV的综合函数
+                    // 不写在这里面，是因为容易导致多层嵌套，影响阅读
+                    // 结果的成功与失败，在这个函数内部处理
+                    // 这里不用管他的返回值了
+                    Get_Save_And_Upload();
+
+                    char zip_path[FS_MAX_PATH] = {0};
                     // 生成存档，如果成功则进行上传。
-                    if(generate_save_archive(g_previous_game_tid)) webdav_handshake();
+                    // 这块暂时这么写，后面会修改这部分。
+                    if(generate_save_archive(g_previous_game_tid,zip_path)) {
+                        if (webdav_handshake()) {
+                            Result upload_rc = stream_zip_to_webdav(zip_path, g_previous_game_tid);
+                            if (R_SUCCEEDED(upload_rc)) {
+                                switch_to_ftp_mode();
+                            } 
+
+                        }
+                    }
 
                     // 关闭LED效果作为完成提示，只有在成功开启时才关闭
                     if (led_enabled) Close_Back_LED();
@@ -1519,6 +1524,80 @@ static u64 Get_Current_Commit_Id(u64 current_tid) {
 
 }
 
+
+
+
+// 生成本地存档和上传到WebDAV的综合函数
+static void Get_Save_And_Upload() {
+
+    // 获取游戏的中文（失败就获取别的）名用来写入备份日志
+    NcmContentId content_id = {0};
+    struct AppName app_name = {0};
+    get_app_name(g_previous_game_tid, &content_id, &app_name);
+
+    // 生成本地存档文件
+    char zip_path[FS_MAX_PATH] = {0};
+    bool save_success = generate_save_archive(g_previous_game_tid,zip_path);
+
+    // 生成存档依赖BSD套接字，所以必须在生成存档完成后，才能切换到标准套接字
+    char NTPtimes[64] = "0000.00.00@00.00.00";
+    // 如果自动上传未开启，但是网络可用(这段NTP的逻辑可能会修改为默认使用这个时间，但是需要重构别的地方代码，不过我暂时没时间，先这样用)
+    if (is_network_available()) {
+        // 获取NTP时间戳用于备份日志(只用于日志)
+        time_t ntp_time = get_ntp_time();
+        if (ntp_time != 0){
+            // 使用NTP时间戳
+            struct tm* tm_info = localtime(&ntp_time);
+            strftime(NTPtimes, sizeof(NTPtimes), "%Y.%m.%d@%H.%M.%S", tm_info);
+        } else log_file_write("NTP时间获取失败！");
+    }
+
+    if (!save_success){
+        // 备份失败时发送Ultrahand通知
+        create_ultrahand_notification("本地备份失败", 2);
+        // 写入备份记录: "保存失败|游戏名|用户名|时间戳"
+        backuplog_fwrite("本地备份失败|%s|%s|%s", app_name.str, g_current_game_user_name, NTPtimes);
+        return;
+    }
+
+    create_ultrahand_notification("本地备份完成", 1);
+
+    // 如果没有开启上传功能，或者没有网络，到此任务终止
+    if (!webdav_config.enabled || !is_network_available()) {
+        backuplog_fwrite("本地备份成功|%s|%s|%s", app_name.str, g_current_game_user_name, NTPtimes);
+        log_file_write("未开启自动上传，或者未连接网络！任务结束！");
+        return;
+    }
+
+    // 如果握手失败代表仅备份至本地(内部会处理FTP和WebDAV的切换)
+    if (!webdav_handshake()) {
+        backuplog_fwrite("云端备份失败，仅备份至本地|%s|%s|%s", app_name.str, g_current_game_user_name, NTPtimes);
+        return;
+    }
+
+    // 上传到网盘
+    Result upload_rc = stream_zip_to_webdav(zip_path, g_previous_game_tid);
+    if (R_SUCCEEDED(upload_rc)) {
+        backuplog_fwrite("云端备份成功|%s|%s|%s", app_name.str, g_current_game_user_name, NTPtimes);
+    } else {
+        backuplog_fwrite("云端备份失败|%s|%s|%s", app_name.str, g_current_game_user_name, NTPtimes);
+    }
+
+    // 切换回FTP模式
+    switch_to_ftp_mode();
+   
+}
+
+
+
+
+
+
+
+
+
+
+
 static bool create_game_folder(u64 tid) {
     
     // 获取游戏名称
@@ -1561,12 +1640,7 @@ static bool create_game_folder(u64 tid) {
 
 }
 
-static bool generate_save_archive(u64 tid) {
-    
-    // 获取游戏的中文（失败就获取别的）名用来写入备份日志
-    NcmContentId content_id = {0};
-    struct AppName app_name = {0};
-    get_app_name(tid, &content_id, &app_name);
+static bool generate_save_archive(u64 tid, char* out_zip_path) {
 
     // 添加调试日志：开始生成存档
     log_file_fwrite("准备为 TID: %016lX 生成存档", tid);
@@ -1658,8 +1732,7 @@ static bool generate_save_archive(u64 tid) {
     get_latest_webdav_timestamp_and_sequence(username, folder_name, latest_timestamp, sizeof(latest_timestamp), &sequence_num);
 
     // FS_MAX_PATH标签有700多个字符，不可能超过，所以不需要检查
-    char final_path[FS_MAX_PATH] = {0};
-    snprintf(final_path, sizeof(final_path), "%s/%s/%s/%s_%s_%s_%d.zip", 
+    snprintf(out_zip_path, FS_MAX_PATH, "%s/%s/%s/%s_%s_%s_%d.zip", 
                 AUTOBACK_DIR_PATH, username, folder_name, folder_name, username, latest_timestamp, sequence_num);
 
     // 管理存档数量：在创建新存档前检查并删除最旧的存档，配置文件有最大存档数量配置项
@@ -1670,7 +1743,7 @@ static bool generate_save_archive(u64 tid) {
 
     FsFileSystem* sdmc_fs = fsdev_wrapGetDeviceFileSystem("sdmc");
     // 流式传输ZIP到SD卡
-    rc = stream_zip_to_sdcard(&mz, sdmc_fs, final_path); 
+    rc = stream_zip_to_sdcard(&mz, sdmc_fs, out_zip_path); 
     if (R_SUCCEEDED(rc)) local_backup_success = true;
 
 CLEANUP:
@@ -2512,371 +2585,149 @@ static Result stream_zip_to_sdcard(struct mmz_Data* mz, FsFileSystem* sdmc_fs, c
 // WebDAV连接与认证
 static bool webdav_handshake(void) {
 
-    if (!webdav_config.enabled || !is_network_available()) {
-        log_file_write("未开启自动上传，或者未连接网络！任务结束！");
-        return false;
-    }
-
-
     CURL *curl;
     CURLcode res;
     char url[128];
     bool handshake_success = false;
     
-    // 添加调试日志
-    char debug_buf[256];
-    snprintf(debug_buf, sizeof(debug_buf), "Begin WebDAV shakehand");
-    log_file_write(debug_buf);
-    
     // 切换到WebDAV模式（清理BSD套接字，初始化标准套接字）
-    log_file_write("Preparing for WebDAV handshake - switching socket mode");
-    Result rc = switch_to_webdav_mode();
-    if (R_FAILED(rc)) {
-        log_file_write("Failed to switch to WebDAV mode");
-        return false;
-    }
+    if (R_FAILED(switch_to_webdav_mode())) goto end;
     
-    // 等待套接字切换完成
-    svcSleepThread(100000000LL); // 100ms
-    
-    snprintf(debug_buf, sizeof(debug_buf), "WebDAV mode switch completed");
-    log_file_write(debug_buf);
+    log_file_write("已成功切换到WebDAV模式");
     
     // 构造完整的 WebDAV URL（注意末尾斜杠）
     snprintf(url, sizeof(url), "%s/%s/", webdav_config.origin, webdav_config.basepath);
-    snprintf(debug_buf, sizeof(debug_buf), "WebDAV URL: %s", url);
-    log_file_write(debug_buf);
+    log_file_fwrite("WebDAV URL: %s", url);
     
+    // 初始化libcurl库
     curl = curl_easy_init();
-    if (curl) {
-        snprintf(debug_buf, sizeof(debug_buf), "curl initialization successful");
-        log_file_write(debug_buf);
-        
-        char errbuf[CURL_ERROR_SIZE];
-        memset(errbuf, 0, sizeof(errbuf));
-        curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, errbuf);
+    if (!curl) {
+        log_file_write("curl初始化失败！");
+        goto end;
+    }
 
-        // 目标：WebDAV PROPFIND
-        curl_easy_setopt(curl, CURLOPT_URL, url);
-        curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "PROPFIND");
-        curl_easy_setopt(curl, CURLOPT_USERAGENT, "libnx-webdav/1.0");
+    log_file_write("curl初始化成功！");
 
-        // Basic 认证（从配置文件读取）
-        curl_easy_setopt(curl, CURLOPT_HTTPAUTH, (long)CURLAUTH_BASIC);
-        curl_easy_setopt(curl, CURLOPT_USERNAME, webdav_config.username);
-        curl_easy_setopt(curl, CURLOPT_PASSWORD, webdav_config.password);
+    // 设置错误缓冲区
+    char errbuf[CURL_ERROR_SIZE];
+    memset(errbuf, 0, sizeof(errbuf));
+    curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, errbuf);
 
-        struct curl_slist *headers = NULL;
-        headers = curl_slist_append(headers, "Depth: 0");
-        headers = curl_slist_append(headers, "Content-Type: text/xml; charset=\"utf-8\"");
-        curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-        
-        // 进行DNS解析获取实际IP地址
-        struct hostent *host_entry;
-        char actual_ip[INET_ADDRSTRLEN];
-        // 从webdav_config.origin中提取主机名
-        char hostname[128];
-        if (strncmp(webdav_config.origin, "http://", 7) == 0) {
-            strncpy(hostname, webdav_config.origin + 7, sizeof(hostname) - 1);
-        } else if (strncmp(webdav_config.origin, "https://", 8) == 0) {
-            strncpy(hostname, webdav_config.origin + 8, sizeof(hostname) - 1);
-        } else {
-            strncpy(hostname, webdav_config.origin, sizeof(hostname) - 1);
-        }
-        // 移除路径部分，只保留主机名
-        char *path_sep = strchr(hostname, '/');
-        if (path_sep) {
-            *path_sep = '\0';
-        }
-        hostname[sizeof(hostname) - 1] = '\0';
-        
-        host_entry = gethostbyname(hostname);
-        if (host_entry != NULL) {
-            struct in_addr addr;
-            memcpy(&addr, host_entry->h_addr_list[0], sizeof(struct in_addr));
-            inet_ntop(AF_INET, &addr, actual_ip, INET_ADDRSTRLEN);
-            snprintf(debug_buf, sizeof(debug_buf), "DNS resolution result: %s -> %s", hostname, actual_ip);
-            log_file_write(debug_buf);
-        } else {
-            snprintf(debug_buf, sizeof(debug_buf), "DNS resolution failed: %s", hostname);
-            log_file_write(debug_buf);
-        }
-        
-        log_file_write(debug_buf);
+    // 设置请求URL和方法 
+    // CURLOPT_URL 设置请求的目标 URL
+    // CURLOPT_CUSTOMREQUEST 设置自定义请求方法，这里是 PROPFIND，标准方法用于检测目标是否支持WebDAV
+    // CURLOPT_USERAGENT 设置用户代理（HTTP User-Agent），这里是 libnx-webdav/1.0
+    curl_easy_setopt(curl, CURLOPT_URL, url);
+    curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "PROPFIND");
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, "libnx-webdav/1.0");
+
+    // Basic 认证（从配置文件读取）
+    // CURLOPT_HTTPAUTH 设置HTTP认证类型，这里是 Basic 认证（用户名:密码 的 Base64 编码）
+    // CURLOPT_USERNAME 设置用户名
+    // CURLOPT_PASSWORD 设置密码
+    curl_easy_setopt(curl, CURLOPT_HTTPAUTH, (long)CURLAUTH_BASIC);
+    curl_easy_setopt(curl, CURLOPT_USERNAME, webdav_config.username);
+    curl_easy_setopt(curl, CURLOPT_PASSWORD, webdav_config.password);
+
+    // 设置HTTP头
+    // CURLOPT_HTTPHEADER 设置HTTP请求头，这里设置 Depth: 0 表示只查询当前目录
+    // Content-Type: text/xml; charset=\"utf-8\" 表示请求体为XML格式，编码为UTF-8
+    // CURLOPT_HTTPHEADER ：将自定义头部列表应用到请求中
+    struct curl_slist *headers = NULL;
+    headers = curl_slist_append(headers, "Depth: 0");
+    headers = curl_slist_append(headers, "Content-Type: text/xml; charset=\"utf-8\"");
+    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+
+    // 进行DNS解析获取实际IP地址
+    struct hostent *host_entry;
+    char actual_ip[INET_ADDRSTRLEN];
+
+    // 从webdav_config.origin中提取主机名
+    char hostname[128];
+    if (strncmp(webdav_config.origin, "http://", 7) == 0) {
+        strncpy(hostname, webdav_config.origin + 7, sizeof(hostname) - 1);
+    } else if (strncmp(webdav_config.origin, "https://", 8) == 0) {
+        strncpy(hostname, webdav_config.origin + 8, sizeof(hostname) - 1);
+    } else {
+        strncpy(hostname, webdav_config.origin, sizeof(hostname) - 1);
+    }
+    // 移除路径部分，只保留主机名
+    char *path_sep = strchr(hostname, '/');
+    if (path_sep) {
+        *path_sep = '\0';
+    }
+    hostname[sizeof(hostname) - 1] = '\0';
+
+    // 进行DNS解析获取实际IP地址
+    host_entry = gethostbyname(hostname);
+    if (host_entry != NULL) {
+        struct in_addr addr;
+        memcpy(&addr, host_entry->h_addr_list[0], sizeof(struct in_addr));
+        inet_ntop(AF_INET, &addr, actual_ip, INET_ADDRSTRLEN);
+        log_file_fwrite("DNS 解析成功: %s -> %s", hostname, actual_ip);
+    } else {
+        log_file_fwrite("任务终止！DNS 解析失败: %s", hostname);
+        goto end;
+    }
+
+    // 设置响应数据处理回调函数（修复崩溃问题）
+    struct WebDAVResponseData response_data;
+    // 分配 1 字节的初始内存空间
+    response_data.data = malloc(1);
+    if (!response_data.data) {
+        log_file_write("为响应数据分配内存失败，任务终止！");
+        goto end;
+    }
+    response_data.data[0] = '\0';
+    response_data.size = 0;
     
-        // 设置响应数据处理回调函数（修复崩溃问题）
-        struct WebDAVResponseData response_data;
-        response_data.data = malloc(1);
-        if (!response_data.data) {
-            snprintf(debug_buf, sizeof(debug_buf), "Failed to allocate memory for response data");
-            log_file_write(debug_buf);
-            curl_slist_free_all(headers);
-            curl_easy_cleanup(curl);
-            return false;
-        }
-        response_data.data[0] = '\0';
-        response_data.size = 0;
-        
-        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, webdav_response_write_callback);
-        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response_data);
-        snprintf(debug_buf, sizeof(debug_buf), "libcurl configuration completed");
-        log_file_write(debug_buf);
-        
-        res = curl_easy_perform(curl);
-        if (res == CURLE_OK) {
-            long code = 0;
-            curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &code);
-            snprintf(debug_buf, sizeof(debug_buf), "WebDAV PROPFIND completed: status code=%ld", code);
-            log_file_write(debug_buf);
-            handshake_success = true;
-        } else {
-            if (errbuf[0]) {
-                snprintf(debug_buf, sizeof(debug_buf), "WebDAV request failed: %d, %s", res, errbuf);
-                log_file_write(debug_buf);
-            } else {
-                snprintf(debug_buf, sizeof(debug_buf), "WebDAV request failed, error code: %d", res);
-                log_file_write(debug_buf);
-            }
-        }
+    // 配置libcurl，设置响应数据处理回调函数
+    // CURLOPT_WRITEFUNCTION 设置响应数据处理回调函数，这里是 webdav_response_write_callback
+    // CURLOPT_WRITEDATA 设置回调函数的上下文数据，这里是 &response_data
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, webdav_response_write_callback);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response_data);
+    log_file_write("libcurl 配置完成，设置响应数据处理回调函数");
 
-        // 清理资源
-        snprintf(debug_buf, sizeof(debug_buf), "Cleaning HTTP headers");
-        log_file_write(debug_buf);
+    // 执行之前配置的所有HTTP请求参数(阻塞调用)
+    res = curl_easy_perform(curl);
+    if (res == CURLE_OK) {
+        long code = 0;
+        // 获取HTTP响应状态码
+        // 200 OK ：标准HTTP成功响应
+        // 207 Multi-Status ：WebDAV PROPFIND成功响应
+        // 401 Unauthorized ：认证失败
+        // 404 Not Found ：路径不存在
+        curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &code);
+        log_file_fwrite("WebDAV 握手成功，响应状态码=%ld", code);
+        handshake_success = true;
+    } else {
+        if (errbuf[0]) log_file_fwrite("WebDAV 握手失败: %d, %s", res, errbuf);
+        else log_file_fwrite("WebDAV 握手失败, error code: %d", res);
+    }
+
+    
+
+    log_file_write("资源（HTTP头、curl句柄、响应数据）清理完成！");
+
+end:
+
+    // 清理资源
+    if (curl) {
         curl_slist_free_all(headers);
         curl_easy_cleanup(curl);
-             
-        // 释放响应数据内存
-        if (response_data.data) {
-            free(response_data.data);
-        }
-    } else {
-        snprintf(debug_buf, sizeof(debug_buf), "Failed to initialize curl");
-        log_file_write(debug_buf);
+    }
+            
+    // 释放响应数据内存
+    if (response_data.data) {
+        free(response_data.data);
+    }
+
+    if (!handshake_success) {
+        log_file_write("WebDAV 握手失败，需要切换回 FTP 模式");
+        switch_to_ftp_mode();
     }
     
-    // 如果握手成功，直接进行流式上传
-    if (handshake_success) {
-        snprintf(debug_buf, sizeof(debug_buf), "WebDAV handshake successful, starting streaming upload");
-        log_file_write(debug_buf);
-        
-        // 获取当前游戏TID
-        u64 current_tid = 0;
-        if (R_FAILED(get_current_tid(&current_tid)) || current_tid == 0) {
-            snprintf(debug_buf, sizeof(debug_buf), "Failed to get current game TID, proceeding with local backup");
-            log_file_write(debug_buf);
-            handshake_success = false;
-            goto cleanup;
-        }
-        
-        // 检查当前游戏用户
-        if (g_current_game_user_uid.uid[0] == 0 && g_current_game_user_uid.uid[1] == 0) {
-            snprintf(debug_buf, sizeof(debug_buf), "No current game user detected, proceeding with local backup");
-            log_file_write(debug_buf);
-            handshake_success = false;
-            goto cleanup;
-        }
-        
-        // 使用全局变量中的用户信息
-        AccountUid target_user = g_current_game_user_uid;
-        const char* username = g_current_game_user_name[0] ? g_current_game_user_name : "Unknown";
-        
-        snprintf(debug_buf, sizeof(debug_buf), "Processing WebDAV upload for user: %s (%016lX%016lX)", 
-                 username, target_user.uid[0], target_user.uid[1]);
-        log_file_write(debug_buf);
-        
-        // 获取游戏名称用于构造搜索路径
-        char local_folder_name[128] = {0};
-        char local_sanitized_name[128] = {0};
-        char local_tid_str[32] = {0};
-        
-        // 尝试从存档生成时使用的TID获取游戏名称
-        // 注意：这里我们使用存档生成时的TID，而不是当前TID
-        NcmContentId content_id = {0};
-        struct AppName app_name = {0};
-        
-        // 首先尝试从全局变量中获取之前运行的游戏TID
-        u64 game_tid = g_previous_game_tid; // 使用全局变量g_previous_game_tid
-        if (game_tid == 0x0100000000001000ULL || game_tid == 0) {
-            // 如果g_previous_game_tid是QLAUNCH或0，则使用当前TID
-            game_tid = current_tid;
-        }
-        
-        if (game_tid != 0 && game_tid != 0x0100000000001000ULL) {
-            get_app_en_name(game_tid, &content_id, &app_name);
-            
-            // 清理游戏名称中的非法字符
-            if (strlen(app_name.str) > 0) {
-                strncpy(local_sanitized_name, app_name.str, sizeof(local_sanitized_name) - 1);
-                sanitize_filename(local_sanitized_name);
-                strncpy(local_folder_name, local_sanitized_name, sizeof(local_folder_name) - 1);
-                local_folder_name[sizeof(local_folder_name) - 1] = '\0';
-            }
-            
-            // 如果无法获取游戏名称，则使用TID作为后备
-            if (strlen(local_sanitized_name) == 0) {
-                snprintf(local_tid_str, sizeof(local_tid_str), "%016lX", game_tid);
-                strncpy(local_folder_name, local_tid_str, sizeof(local_folder_name) - 1);
-                local_folder_name[sizeof(local_folder_name) - 1] = '\0';
-            }
-        } else {
-            // 如果无法获取有效的游戏TID，使用默认名称
-            strcpy(local_folder_name, "UnknownGame");
-        }
-        
-        snprintf(debug_buf, sizeof(debug_buf), "Using game folder name: %s for TID %016lX", local_folder_name, game_tid);
-        log_file_write(debug_buf);
-        
-        // 查找本地已生成的ZIP文件
-        FsFileSystem* sdmc_fs = fsdev_wrapGetDeviceFileSystem("sdmc");
-        if (sdmc_fs == NULL) {
-            snprintf(debug_buf, sizeof(debug_buf), "Failed to get SDMC filesystem for finding local backup");
-            log_file_write(debug_buf);
-            handshake_success = false;
-            goto cleanup;
-        } else {
-            snprintf(debug_buf, sizeof(debug_buf), "Successfully obtained SDMC filesystem in WebDAV mode");
-            log_file_write(debug_buf);
-        }
-        
-        // 构造本地存档路径模式：/AutoBack/用户名/local_folder_name
-        char search_pattern[FS_MAX_PATH];
-        snprintf(search_pattern, sizeof(search_pattern), "%s/%s/%s", AUTOBACK_DIR_PATH, username, local_folder_name);
-        
-        snprintf(debug_buf, sizeof(debug_buf), "Searching for local backup files in: %s", search_pattern);
-        log_file_write(debug_buf);
-        
-        // 查找最新的ZIP文件
-        char latest_zip_path[FS_MAX_PATH] = {0};
-        s64 latest_zip_time = 0;
-        
-        // 遍历目录查找ZIP文件
-        FsDir search_dir;
-        snprintf(debug_buf, sizeof(debug_buf), "Attempting to open directory: %s", search_pattern);
-        log_file_write(debug_buf);
-        
-        Result dir_rc = fsFsOpenDirectory(sdmc_fs, search_pattern, FsDirOpenMode_ReadDirs | FsDirOpenMode_ReadFiles, &search_dir);
-        
-        if (R_SUCCEEDED(dir_rc)) {
-            snprintf(debug_buf, sizeof(debug_buf), "Successfully opened directory: %s", search_pattern);
-            log_file_write(debug_buf);
-            s64 entry_count = 0;
-            fsDirGetEntryCount(&search_dir, &entry_count);
-            
-            if (entry_count > 0) {
-                snprintf(debug_buf, sizeof(debug_buf), "Directory contains %ld entries", entry_count);
-                log_file_write(debug_buf);
-                
-                // 读取目录条目
-                size_t entry_buffer_size = sizeof(FsDirectoryEntry) * entry_count;
-                FsDirectoryEntry* entries = malloc(entry_buffer_size);
-                if (entries != NULL) {
-                    s64 entries_read = 0;
-                    Result read_rc = fsDirRead(&search_dir, &entries_read, entry_count, entries);
-                    
-                    if (R_SUCCEEDED(read_rc) && entries_read > 0) {
-                        snprintf(debug_buf, sizeof(debug_buf), "Successfully read %ld entries from directory", entries_read);
-                        log_file_write(debug_buf);
-                        // 查找最新的ZIP文件
-                        for (s64 i = 0; i < entries_read; i++) {
-                            snprintf(debug_buf, sizeof(debug_buf), "Found entry: %s (type: %d)", entries[i].name, entries[i].type);
-                            log_file_write(debug_buf);
-                            
-                            if (strstr(entries[i].name, ".zip") != NULL) {
-                                snprintf(debug_buf, sizeof(debug_buf), "Found ZIP file: %s", entries[i].name);
-                                log_file_write(debug_buf);
-                                // 获取文件修改时间
-                                FsFile entry_file;
-                                char file_path[FS_MAX_PATH];
-                                snprintf(file_path, sizeof(file_path), "%s/%s", search_pattern, entries[i].name);
-                                snprintf(debug_buf, sizeof(debug_buf), "Attempting to open file: %s", file_path);
-                                log_file_write(debug_buf);
-                                
-                                Result file_rc = fsFsOpenFile(sdmc_fs, file_path, FsOpenMode_Read, &entry_file);
-                                if (R_SUCCEEDED(file_rc)) {
-                                    snprintf(debug_buf, sizeof(debug_buf), "Successfully opened file: %s", file_path);
-                                    log_file_write(debug_buf);
-                                    s64 file_size;
-                                    fsFileGetSize(&entry_file, &file_size);
-                                    
-                                    // 简单的文件大小检查作为时间戳替代
-                                    if (file_size > latest_zip_time) {
-                                        latest_zip_time = file_size;
-                                        snprintf(latest_zip_path, sizeof(latest_zip_path), "%s/%s", search_pattern, entries[i].name);
-                                    }
-                                    
-                                    fsFileClose(&entry_file);
-                                } else {
-                                    snprintf(debug_buf, sizeof(debug_buf), "Failed to open file %s: 0x%x", file_path, file_rc);
-                                    log_file_write(debug_buf);
-                                }
-                            }
-                        }
-                    } else {
-                        snprintf(debug_buf, sizeof(debug_buf), "Failed to read directory entries: read_rc=0x%x, entries_read=%ld", read_rc, entries_read);
-                        log_file_write(debug_buf);
-                    }
-                    
-                    free(entries);
-                } else {
-                    snprintf(debug_buf, sizeof(debug_buf), "Failed to allocate memory for directory entries");
-                    log_file_write(debug_buf);
-                }
-            } else {
-                snprintf(debug_buf, sizeof(debug_buf), "Directory is empty: %s", search_pattern);
-                log_file_write(debug_buf);
-            }
-            
-            fsDirClose(&search_dir);
-        } else {
-            snprintf(debug_buf, sizeof(debug_buf), "Failed to open directory %s: 0x%x", search_pattern, dir_rc);
-            log_file_write(debug_buf);
-        }
-        
-        if (latest_zip_path[0] != '\0') {
-            // 找到本地ZIP文件，执行WebDAV上传
-            snprintf(debug_buf, sizeof(debug_buf), "Found local backup file: %s", latest_zip_path);
-            log_file_write(debug_buf);
-            
-                // 在上传前管理WebDAV端存档数量（与本地存档保持一致的时序）
-            manage_webdav_backup_count(username, local_folder_name);
-            
-            // 执行WebDAV上传
-            Result upload_rc = stream_zip_to_webdav(latest_zip_path, game_tid, target_user, username);
-            
-            if (R_FAILED(upload_rc)) {
-                snprintf(debug_buf, sizeof(debug_buf), "WebDAV streaming upload failed: 0x%x", upload_rc);
-                log_file_write(debug_buf);
-                handshake_success = false;
-            } else {
-                snprintf(debug_buf, sizeof(debug_buf), "WebDAV streaming upload completed successfully");
-                log_file_write(debug_buf);
-            }
-        } else {
-            // 未找到本地ZIP文件
-            snprintf(debug_buf, sizeof(debug_buf), "No local backup file found for TID %016lX and user %s", game_tid, username);
-            log_file_write(debug_buf);
-            handshake_success = false;
-        }
-    }
-    
-cleanup:
-    // 切换回FTP模式（清理标准套接字，重新初始化BSD套接字）
-    log_file_write("WebDAV handshake and upload completed - switching back to FTP mode");
-    Result switch_rc = switch_to_ftp_mode();
-    if (R_FAILED(switch_rc)) {
-        log_file_write("Warning: Failed to switch back to FTP mode");
-    }
-    
-    // 等待套接字切换完成
-    svcSleepThread(300000000LL); // 增加到300ms，确保套接字切换完成和状态稳定
-    
-    snprintf(debug_buf, sizeof(debug_buf), "Switched back to FTP mode");
-    log_file_write(debug_buf);
-    
-    // 状态变量已在switch_to_ftp_mode函数中重置，无需重复重置
-    log_file_write("WebDAV operation completed, ready to resume game TID monitoring");
-    
-    // 返回true表示握手和上传都成功，false表示需要本地生成
+    // 返回true表示握手成功
     return handshake_success;
 }
 
@@ -3218,41 +3069,21 @@ static void get_latest_webdav_timestamp_and_sequence(const char* username, const
 }
 
 // 添加流式传输ZIP到WebDAV的函数 - 从本地ZIP文件上传
-static Result stream_zip_to_webdav(const char* local_zip_path, u64 tid, AccountUid user_uid, const char* username) {
+static Result stream_zip_to_webdav(const char* local_zip_path, u64 tid) {
+
+    // 需要重构，因为时间问题，暂时先这样
+    
+
     CURL* curl;
     CURLcode res;
     char url[256];
     Result result = 0;
     FsFile zip_file;
+
+    // 在上传前管理WebDAV端存档数量（与本地存档保持一致的时序）
+    manage_webdav_backup_count(g_current_game_user_name, folder_name);
     
-    // 参数验证
-    if (!local_zip_path || strlen(local_zip_path) == 0) {
-        char debug_buf[256] = {0};
-        snprintf(debug_buf, sizeof(debug_buf), "WebDAV上传失败, 本地ZIP路径为空");
-        log_file_write(debug_buf);
-        return -1;
-    }
-    
-    if (!username || strlen(username) == 0) {
-        char debug_buf[256] = {0};
-        snprintf(debug_buf, sizeof(debug_buf), "WebDAV上传失败, 用户名为空, 使用UID作为后备");
-        log_file_write(debug_buf);
-        
-        // 使用UID作为后备用户名
-        static char uid_fallback[64] = {0};
-        snprintf(uid_fallback, sizeof(uid_fallback), "%016lX%016lX", 
-                 (u64)(user_uid.uid[1]) << 32 | user_uid.uid[0], 
-                 (u64)(user_uid.uid[3]) << 32 | user_uid.uid[2]);
-        username = uid_fallback;
-        
-        snprintf(debug_buf, sizeof(debug_buf), "使用UID作为用户名, UID: %s", username);
-        log_file_write(debug_buf);
-    }
-    
-    // 添加调试日志：开始WebDAV上传
-    char debug_buf[256] = {0};
-    snprintf(debug_buf, sizeof(debug_buf), "开始WebDAV上传, TID: %016lX, 用户: %s, 本地文件: %s", tid, username, local_zip_path);
-    log_file_write(debug_buf);
+    log_file_fwrite("准备WebDAV上传, TID: %016lX, 用户: %s, 本地文件: %s", tid, g_current_game_user_name, local_zip_path);
     
     // 获取NTP时间戳用于云端存档命名
     time_t ntp_time = get_ntp_time();
@@ -3267,7 +3098,7 @@ static Result stream_zip_to_webdav(const char* local_zip_path, u64 tid, AccountU
         NcmContentId content_id = {0};
         struct AppName app_name = {0};
         get_app_name(tid, &content_id, &app_name);
-        backuplog_fwrite("云端备份失败，仅备份至本地|%s|%s|0000.00.00@00.00.00", app_name.str, username);
+        backuplog_fwrite("云端备份失败，仅备份至本地|%s|%s|0000.00.00@00.00.00", app_name.str, g_current_game_user_name);
         return -1;
     } else {
         // 使用NTP时间戳
@@ -3295,8 +3126,8 @@ static Result stream_zip_to_webdav(const char* local_zip_path, u64 tid, AccountU
     
     // 清理用户名中的非法字符并验证
     char sanitized_username[256] = {0};
-    if (username && strlen(username) > 0) {
-        strncpy(sanitized_username, username, sizeof(sanitized_username) - 1);
+    if (g_current_game_user_name && strlen(g_current_game_user_name) > 0) {
+        strncpy(sanitized_username, g_current_game_user_name, sizeof(sanitized_username) - 1);
         sanitize_filename(sanitized_username);
         
         // 验证清理后的用户名是否有效（不为空且包含有效字符）
@@ -3315,14 +3146,14 @@ static Result stream_zip_to_webdav(const char* local_zip_path, u64 tid, AccountU
             
             // 使用UID作为后备用户名
             snprintf(sanitized_username, sizeof(sanitized_username), "%016lX%016lX", 
-                     (u64)(user_uid.uid[1]) << 32 | user_uid.uid[0], 
-                     (u64)(user_uid.uid[3]) << 32 | user_uid.uid[2]);
+                     (u64)(g_current_game_user_uid.uid[1]) << 32 | g_current_game_user_uid.uid[0], 
+                     (u64)(g_current_game_user_uid.uid[3]) << 32 | g_current_game_user_uid.uid[2]);
         }
     } else {
         // 用户名为空，使用UID
         snprintf(sanitized_username, sizeof(sanitized_username), "%016lX%016lX", 
-                 (u64)(user_uid.uid[1]) << 32 | user_uid.uid[0], 
-                 (u64)(user_uid.uid[3]) << 32 | user_uid.uid[2]);
+                 (u64)(g_current_game_user_uid.uid[1]) << 32 | g_current_game_user_uid.uid[0], 
+                 (u64)(g_current_game_user_uid.uid[3]) << 32 | g_current_game_user_uid.uid[2]);
     }
     
     // 对URL组件进行URL编码以处理空格等特殊字符
@@ -3412,6 +3243,7 @@ static Result stream_zip_to_webdav(const char* local_zip_path, u64 tid, AccountU
         }
     }
     
+    char debug_buf[256] = {0};
     snprintf(debug_buf, sizeof(debug_buf), "WebDAV 上传URL: %s", url);
     log_file_write(debug_buf);
     
@@ -3458,7 +3290,7 @@ static Result stream_zip_to_webdav(const char* local_zip_path, u64 tid, AccountU
     
     // 创建用户目录
     char user_dir[512];
-    snprintf(user_dir, sizeof(user_dir), "AutoBack/%s", username);
+    snprintf(user_dir, sizeof(user_dir), "AutoBack/%s", g_current_game_user_name);
     if (!create_webdav_directory(user_dir)) {
         snprintf(debug_buf, sizeof(debug_buf), "WebDAV 目录创建失败: %s", user_dir);
         log_file_write(debug_buf);
@@ -3469,7 +3301,7 @@ static Result stream_zip_to_webdav(const char* local_zip_path, u64 tid, AccountU
     }
     
     // 创建游戏标题目录
-    snprintf(autoback_game_dir, sizeof(autoback_game_dir), "AutoBack/%s/%s", username, sanitized_title);
+    snprintf(autoback_game_dir, sizeof(autoback_game_dir), "AutoBack/%s/%s", g_current_game_user_name, sanitized_title);
     if (!create_webdav_directory(autoback_game_dir)) {
         snprintf(debug_buf, sizeof(debug_buf), "WebDAV 目录创建失败: %s", autoback_game_dir);
         log_file_write(debug_buf);
@@ -3542,7 +3374,7 @@ static Result stream_zip_to_webdav(const char* local_zip_path, u64 tid, AccountU
             create_ultrahand_notification("备份上传成功", 1);
             
             // 写入备份记录: "上传成功|游戏名|用户名|时间戳" (2表示WebDAV上传成功)
-            backuplog_fwrite("云端备份成功|%s|%s|%s", app_name.str, username, ntp_timestamp);
+            backuplog_fwrite("云端备份成功|%s|%s|%s", app_name.str, g_current_game_user_name, ntp_timestamp);
             
             result = 0;
             
@@ -3554,7 +3386,7 @@ static Result stream_zip_to_webdav(const char* local_zip_path, u64 tid, AccountU
             create_ultrahand_notification("备份上传失败", 2);
             
             // 写入备份记录: "上传失败|游戏名|用户名|时间戳" (3表示WebDAV上传失败)
-            backuplog_fwrite("云端备份失败，仅备份至本地|%s|%s|%s", app_name.str, username, ntp_timestamp);
+            backuplog_fwrite("云端备份失败，仅备份至本地|%s|%s|%s", app_name.str, g_current_game_user_name, ntp_timestamp);
             
             result = -1;
         }
@@ -3569,7 +3401,7 @@ static Result stream_zip_to_webdav(const char* local_zip_path, u64 tid, AccountU
         create_ultrahand_notification("备份上传失败", 2);
         
         // 写入备份记录: "上传失败|游戏名|用户名|时间戳" (3表示WebDAV上传失败)
-        backuplog_fwrite("云端备份失败，仅备份至本地|%s|%s|%s", sanitized_title, username, ntp_timestamp);
+        backuplog_fwrite("云端备份失败，仅备份至本地|%s|%s|%s", sanitized_title, g_current_game_user_name, ntp_timestamp);
         
         result = -1;
     }
