@@ -1,33 +1,22 @@
 #include "utils.h"
-#include <SimpleIniParser.hpp>
 #include <borealis/logger.hpp>
 #include <borealis/application.hpp>
 #include <switch.h>
 #include <sstream>
 #include <vector>
 
-using namespace simpleIniParser;
-
 namespace utils {
 
     std::string readConfigOption(const std::string& sectionName, const std::string& optionKey, const std::string& defaultValue) {
         try {
-            // 解析配置文件
-            Ini* configIni = Ini::parseFile(CONFIG_FILE);
-            // 查找指定的节
-            IniSection* section = configIni->findSection(sectionName);
-            if (section == nullptr) {
-                delete configIni;
-                return defaultValue;
-            }
-            // 在节中查找指定的选项
-            IniOption* option = section->findFirstOption(optionKey);
-            if (option == nullptr) {
-                delete configIni;
-                return defaultValue;
-            }
-            std::string value = option->value;
-            delete configIni;
+            // 使用minIni-nx库读取配置项
+            std::string value;
+            char buffer[256];
+            
+            // 读取指定section中的配置项
+            ini_gets(sectionName.c_str(), optionKey.c_str(), defaultValue.c_str(), buffer, sizeof(buffer), CONFIG_FILE);
+            
+            value = buffer;
             return value;
         }
         catch (const std::exception& e) {
@@ -38,21 +27,11 @@ namespace utils {
 
     bool writeConfigOption(const std::string& sectionName, const std::string& optionKey, const std::string& value) {
         try {
-            // 解析配置文件
-            Ini* configIni = Ini::parseFile(CONFIG_FILE);
-
-            // 查找或创建节
-            IniSection* section = configIni->findOrCreateSection(sectionName);
-
-            // 查找或创建选项并设置值
-            IniOption* option = section->findOrCreateFirstOption(optionKey, value);
-            option->value = value;
-
-            // 保存文件
-            bool result = configIni->writeToFile(CONFIG_FILE);
-
-            // 清理内存
-            delete configIni;
+            // 使用minIni-nx库写入配置项
+            bool result;
+            
+            // 写入指定section中的配置项
+            result = ini_puts(sectionName.c_str(), optionKey.c_str(), value.c_str(), CONFIG_FILE);
 
             // 显示保存结果通知
             if (result) {
