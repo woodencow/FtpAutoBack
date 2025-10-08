@@ -236,7 +236,7 @@ static void Get_Save_And_Upload();
 // 存档文件管理
 static time_t parse_timestamp_from_filename(const char* filename, int* sequence);
 static int compare_save_files(const void* a, const void* b);
-static void manage_backup_count(const char* username, const char* game_folder);
+static void manage_backup_count();
 static void manage_webdav_backup_count();
 
 // 文件流处理
@@ -944,12 +944,6 @@ static void get_ntp_time(char* timestamp_buffer) {
     struct timespec start_time, end_time;
     clock_gettime(CLOCK_MONOTONIC, &start_time);
 
-    // 检查网络是否可用
-    if (!is_network_available()) {
-        log_file_write("网络不可用，无法同步时间");
-        return;
-    }
-
     int server_sock = -1;
     struct addrinfo hints, *servinfo = NULL;
     int status;
@@ -1495,74 +1489,78 @@ static void Get_Save_And_Upload() {
     struct AppName app_name = {0};
     get_app_name(g_previous_game_tid, &content_id, &app_name);
 
-    // 生成本地存档和上传结果的标志，默认为成功
-    bool save_success = true;
-    bool upload_success = true;
+    // 生成本地存档和上传结果的标志，默认为失败
+    bool save_success = false;
+    bool upload_success = false;
 
     // 生成存档依赖BSD套接字，所以必须在生成存档完成后，才能切换到标准套接字
     char NTPtimes[64] = "0000.00.00@00.00.00";
 
     // 生成本地存档文件
-    // 不需要开始备份的弹窗，因为本地生成非常快，很快就知道是成功还是失败
-    // 不然会快速弹两次弹窗，影响体验
+    create_ultrahand_notification("开始本地备份", 1);
     char zip_path[FS_MAX_PATH] = {0};
-   
     save_success = generate_save_archive(g_previous_game_tid,zip_path);
 
-    // 如果获取存档失败，直接终止任务
-    if (!save_success) goto end;
+    // 如果网络不可用，直接终止任务
+    if (!is_network_available()) {
+        log_file_write("网络不可用，终止任务！");
+        goto end;
+    }
 
-    // 如果网络可用，直接切换到标准套接字
     // 如果切换失败，直接终止任务
     if (R_FAILED(switch_to_webdav_mode())) goto end;
 
     // 切换成功，直接获取NTP时间
     get_ntp_time(NTPtimes);
 
+    // 如果获取存档失败，直接终止任务
+    if (!save_success) goto end;
+    else create_ultrahand_notification("本地备份完成", 1);
+
     // 如果未启用上传功能，直接终止任务
     if (!webdav_config.enabled){
-        backuplog_write("未启用上传功能，终止任务！");
-        // 能执行到这里则代表本地备份肯定是成功的
-        create_ultrahand_notification("本地备份完成", 1);
-        backuplog_fwrite("本地备份成功|%s|%s|%s", app_name.str, g_current_game_user_name, NTPtimes);
+        log_file_write("未启用上传功能，终止任务！");
         goto end;
     }
 
     // 如果时间戳获取失败，则终止任务
     if (strcmp(NTPtimes, "0000.00.00@00.00.00") == 0) {
-        upload_success = false;
         goto end;
     }
 
     // 如果握手失败则终止任务
     if (!webdav_handshake()) {
-        upload_success = false;
         goto end;
     }
 
     // 上传到网盘，记录日志
     create_ultrahand_notification("开始云端备份", 1);
     Result upload_rc = stream_zip_to_webdav(zip_path, g_previous_game_tid, NTPtimes);
-    if (R_FAILED(upload_rc)) {
-        upload_success = false;
-        goto end;
-    }
-
-    // 如果上传成功，记录日志
-    create_ultrahand_notification("云端上传成功", 1);
-    backuplog_fwrite("云端备份成功|%s|%s|%s", app_name.str, g_current_game_user_name, NTPtimes);
+    if (R_SUCCEEDED(upload_rc)) upload_success = true;
+    
 
 end:
 
-    // 统一处理失败的日志记录
-    if (!save_success) {
+    // 统一处理备份日志处理 save_success 和 upload_success默认为false
+    // 几个if判断分别是以下几种情况
+    // 1. 本地备份失败
+    // 2. 本地备份成功，且未开启自动上传功能
+    // 3. 本地备份成功，且开启自动上传功能，上传失败（含无网络）
+    // 4. 本地备份成功，且开启自动上传功能，上传成功
+
+    if (!save_success) {      
         create_ultrahand_notification("本地备份失败", 2);
         backuplog_fwrite("本地备份失败|%s|%s|%s", app_name.str, g_current_game_user_name, NTPtimes);
-
+    } else if (!webdav_config.enabled && save_success) {
+        backuplog_fwrite("本地备份成功|%s|%s|%s", app_name.str, g_current_game_user_name, NTPtimes);
     } else if (!upload_success) {
         create_ultrahand_notification("云端备份失败", 2);
         backuplog_fwrite("云端备份失败，仅备份至本地|%s|%s|%s", app_name.str, g_current_game_user_name, NTPtimes);
+    } else if (upload_success) {
+        create_ultrahand_notification("云端上传成功", 1);
+        backuplog_fwrite("云端备份成功|%s|%s|%s", app_name.str, g_current_game_user_name, NTPtimes);
     }
+
 
     // 计时结束 - 计算执行时间并输出到0.01s精度
     clock_gettime(CLOCK_MONOTONIC, &end_time);
@@ -1719,7 +1717,7 @@ static bool generate_save_archive(u64 tid, char* out_zip_path) {
                 AUTOBACK_DIR_PATH, username, folder_name, folder_name, username, latest_timestamp, sequence_num);
 
     // 管理存档数量：在创建新存档前检查并删除最旧的存档，配置文件有最大存档数量配置项
-    manage_backup_count(username, folder_name);
+    manage_backup_count();
 
     // 添加调试日志：开始流式传输ZIP到SD卡
     log_file_fwrite("已开始流式传输用户 %s 的存档元数据到SD卡", username);
@@ -1767,7 +1765,7 @@ CLEANUP:
     return local_backup_success;
 }
 
-// 存档文件管理
+// 根据文件的名字解析时间戳与序列号
 static time_t parse_timestamp_from_filename(const char* filename, int* sequence) {
     struct tm tm_info = {0};
     time_t timestamp = 0;
@@ -1887,22 +1885,22 @@ static time_t parse_timestamp_from_filename(const char* filename, int* sequence)
                     *dot_pos = ':';
                 }
                 
-                log_file_fwrite("[PARSE_TIMESTAMP] Converted time format: %s", time_str);
+                log_file_fwrite("[PARSE_TIMESTAMP] 解析后时间格式: %s", time_str);
                 if (custom_strptime(time_str, "%Y %m %d %H:%M:%S", &tm_info)) {
                     timestamp = mktime(&tm_info);
-                    log_file_fwrite("[PARSE_TIMESTAMP] Single timestamp format parsed successfully: timestamp=%ld", timestamp);
+                    log_file_fwrite("[PARSE_TIMESTAMP] 单时间戳格式解析成功: timestamp=%ld", timestamp);
                 } else {
-                    log_file_fwrite("[PARSE_TIMESTAMP] Error: Failed to parse single timestamp format with custom_strptime");
+                    log_file_fwrite("[PARSE_TIMESTAMP] 错误: 单时间戳格式使用 custom_strptime 解析失败");
                 }
             } else {
-                log_file_fwrite("[PARSE_TIMESTAMP] Error: @ separator not found in single timestamp format time string");
+                log_file_fwrite("[PARSE_TIMESTAMP] 错误: 单时间戳格式中未找到 @ 分隔符");
             }
         } else {
-            log_file_fwrite("[PARSE_TIMESTAMP] Error: Invalid length for single timestamp format time string");
+            log_file_fwrite("[PARSE_TIMESTAMP] 错误: 单时间戳格式中时间字符串长度无效");
         }
     }
     
-    log_file_fwrite("[PARSE_TIMESTAMP] Parsing completed, final timestamp: %ld, sequence: %d", timestamp, sequence ? *sequence : 0);
+    log_file_fwrite("[PARSE_TIMESTAMP] 解析完成，最终时间戳: %ld, 序列号: %d", timestamp, sequence ? *sequence : 0);
     return timestamp;
 }
 
@@ -1924,58 +1922,20 @@ static int compare_save_files(const void* a, const void* b) {
     return strcmp(file_a->filename, file_b->filename);
 }
 
-static void manage_backup_count(const char* username, const char* game_folder) {
-    // 参数验证
-    if (username == NULL || username[0] == '\0') {
-        char debug_buf[128];
-        snprintf(debug_buf, sizeof(debug_buf), "manage_backup_count: 无效的用户名参数");
-        log_file_write(debug_buf);
-        return;
-    }
-    
-    if (game_folder == NULL || game_folder[0] == '\0') {
-        char debug_buf[128];
-        snprintf(debug_buf, sizeof(debug_buf), "manage_backup_count: 无效的游戏文件夹参数");
-        log_file_write(debug_buf);
-        return;
-    }
+static void manage_backup_count() {
     
     if (g_maxback <= 0) {
         return; // maxback未启用或设置为0
     }
-    
-    // 清理用户名
-    char sanitized_username[64];
-    strncpy(sanitized_username, username, sizeof(sanitized_username) - 1);
-    sanitized_username[sizeof(sanitized_username) - 1] = '\0';
-    sanitize_filename(sanitized_username);
-    
-    // 验证清理后的用户名是否有效
-    bool has_valid_chars = false;
-    for (int i = 0; sanitized_username[i] != '\0'; i++) {
-        if (isalnum((unsigned char)sanitized_username[i]) || sanitized_username[i] == '_' || sanitized_username[i] == '-') {
-            has_valid_chars = true;
-            break;
-        }
-    }
-    
-    if (!has_valid_chars || sanitized_username[0] == '\0') {
-        char debug_buf[128];
-        snprintf(debug_buf, sizeof(debug_buf), "manage_backup_count: 清理后的用户名无效: %s", username);
-        log_file_write(debug_buf);
-        return;
-    }
-    
+
     FsFileSystem* sdmc_fs = fsdev_wrapGetDeviceFileSystem("sdmc");
     if (sdmc_fs == NULL) {
-        char debug_buf[128];
-        snprintf(debug_buf, sizeof(debug_buf), "manage_backup_count: 无法获取SD卡文件系统");
-        log_file_write(debug_buf);
+        log_file_write("[manage_backup_count] 无法获取SD卡文件系统");
         return;
     }
     
     char search_pattern[FS_MAX_PATH];
-    snprintf(search_pattern, sizeof(search_pattern), "%s/%s/%s", AUTOBACK_DIR_PATH, sanitized_username, game_folder);
+    snprintf(search_pattern, sizeof(search_pattern), "%s/%s/%s", AUTOBACK_DIR_PATH, g_current_game_user_name, folder_name);
     
     // 打开目录
     FsDir search_dir;
@@ -2024,6 +1984,7 @@ static void manage_backup_count(const char* username, const char* game_folder) {
     
     fsDirClose(&search_dir);
     
+    // 没有找到任何存档文件
     if (file_count == 0) {
         if (save_files) {
             free(save_files);
@@ -2036,35 +1997,27 @@ static void manage_backup_count(const char* username, const char* game_folder) {
     
     // 输出排序结果用于调试
     for (int i = 0; i < file_count && i < 5; i++) {
-        char debug_buf[256];
-        snprintf(debug_buf, sizeof(debug_buf), "[BACKUP_MANAGE] Sorted[%d]: %s (timestamp=%ld, sequence=%d)", 
+        log_file_fwrite("[manage_backup_count] Sorted[%d]: %s (时间戳=%ld, 序列号=%d)", 
                 i, save_files[i].filename, save_files[i].timestamp, save_files[i].sequence);
-        log_file_write(debug_buf);
     }
     
     // 检查是否需要删除存档
     if (file_count >= g_maxback) {
-        char debug_buf[256];
-        snprintf(debug_buf, sizeof(debug_buf), "发现 %d 个存档文件，maxback=%d，删除最旧的 %d 个文件", 
-                 file_count, g_maxback, file_count - g_maxback + 1);
-        log_file_write(debug_buf);
+        log_file_fwrite("[manage_backup_count] 发现 %d 个存档文件，maxback=%d，删除最旧的 %d 个文件", file_count, g_maxback, file_count - g_maxback + 1);
         
         // 删除最旧的存档，保留maxback-1个（由于排序是从新到旧，最旧的在数组末尾）
         for (int i = file_count - 1; i >= g_maxback - 1; i--) {
             Result delete_rc = fsFsDeleteFile(sdmc_fs, save_files[i].path);
-            if (R_SUCCEEDED(delete_rc)) {
-                snprintf(debug_buf, sizeof(debug_buf), "已删除旧存档文件: %s", save_files[i].filename);
-                log_file_write(debug_buf);
-            } else {
-                snprintf(debug_buf, sizeof(debug_buf), "删除存档文件 %s 失败: 0x%x", save_files[i].filename, delete_rc);
-                log_file_write(debug_buf);
-            }
+            if (R_SUCCEEDED(delete_rc)) log_file_fwrite("[manage_backup_count] 已删除旧存档文件: %s", save_files[i].filename);   
+            else log_file_fwrite("[manage_backup_count] 删除存档文件 %s 失败: 0x%x", save_files[i].filename, delete_rc);
         }
     }
     
+    // 释放数组的内存
     if (save_files) {
         free(save_files);
     }
+
 }
 
 // 管理WebDAV端存档数量，删除最旧的远程存档
@@ -3556,7 +3509,7 @@ static void create_ultrahand_notification(const char* message, int priority) {
         log_file_write(debug_buf);
     } else {
         char debug_buf[256];
-        snprintf(debug_buf, sizeof(debug_buf), "Successfully created ultrahand notification: %s", message);
+        snprintf(debug_buf, sizeof(debug_buf), "成功创建Ultrahand通知: %s", message);
         log_file_write(debug_buf);
     }
 }
@@ -3702,10 +3655,10 @@ static void sanitize_filename(char* filename) {
 
 // 自定义时间解析函数，替代strptime
 static bool custom_strptime(const char* time_str, const char* format, struct tm* tm_info) {
-    log_file_fwrite("[CUSTOM_STRPTIME] Starting to parse time string: %s, format: %s", time_str, format);
+    log_file_fwrite("[CUSTOM_STRPTIME] 开始解析时间字符串: %s, 格式: %s", time_str, format);
     
     if (strcmp(format, "%Y %m %d %H:%M:%S") != 0) {
-        log_file_fwrite("[CUSTOM_STRPTIME] Error: Unsupported format: %s", format);
+        log_file_fwrite("[CUSTOM_STRPTIME] Error: 不支持的时间格式: %s", format);
         return false;
     }
     
@@ -3717,12 +3670,12 @@ static bool custom_strptime(const char* time_str, const char* format, struct tm*
         // 如果空格分隔失败，尝试冒号分隔
         result = sscanf(time_str, "%d:%d:%d %d:%d:%d", &year, &month, &day, &hour, &minute, &second);
         if (result != 6) {
-            log_file_fwrite("[CUSTOM_STRPTIME] Error: sscanf parsing failed, result code: %d", result);
+            log_file_fwrite("[CUSTOM_STRPTIME] Error: sscanf解析时间字符串失败, 结果代码: %d", result);
             return false;
         }
-        log_file_fwrite("[CUSTOM_STRPTIME] Parsed successfully using colon-separated format");
+        log_file_fwrite("[CUSTOM_STRPTIME] 成功使用冒号分隔格式解析时间字符串");
     } else {
-        log_file_fwrite("[CUSTOM_STRPTIME] Parsed successfully using space-separated format");
+        log_file_fwrite("[CUSTOM_STRPTIME] 成功使用空格分隔格式解析时间字符串");
     }
     
     // 验证时间值的合理性
@@ -3730,7 +3683,7 @@ static bool custom_strptime(const char* time_str, const char* format, struct tm*
         hour < 0 || hour > 23 || minute < 0 || minute > 59 || second < 0 || second > 59) {
         // 特殊处理全零时间戳（视为最旧时间戳）
         if (year == 0 && month == 0 && day == 0 && hour == 0 && minute == 0 && second == 0) {
-            log_file_fwrite("[CUSTOM_STRPTIME] Detected all-zero timestamp, treating as oldest valid timestamp");
+            log_file_fwrite("[CUSTOM_STRPTIME] 检测到全零时间戳, 视为最旧有效时间戳");
             tm_info->tm_year = 0; // 1900年
             tm_info->tm_mon = 0;  // 1月
             tm_info->tm_mday = 1; // 1日
@@ -3739,12 +3692,12 @@ static bool custom_strptime(const char* time_str, const char* format, struct tm*
             tm_info->tm_sec = 0;  // 0秒
             tm_info->tm_isdst = -1; // 让mktime自动判断夏令时
             
-            log_file_fwrite("[CUSTOM_STRPTIME] All-zero timestamp processed: tm_year=%d, tm_mon=%d, tm_mday=%d, tm_hour=%d, tm_min=%d, tm_sec=%d", 
+            log_file_fwrite("[CUSTOM_STRPTIME] 处理全零时间戳: tm_year=%d, tm_mon=%d, tm_mday=%d, tm_hour=%d, tm_min=%d, tm_sec=%d", 
                            tm_info->tm_year, tm_info->tm_mon, tm_info->tm_mday, tm_info->tm_hour, tm_info->tm_min, tm_info->tm_sec);
             return true;
         }
         
-        log_file_fwrite("[CUSTOM_STRPTIME] Error: Invalid time values: year=%d, month=%d, day=%d, hour=%d, minute=%d, second=%d", 
+        log_file_fwrite("[CUSTOM_STRPTIME] Error: 时间值无效: year=%d, month=%d, day=%d, hour=%d, minute=%d, second=%d", 
                        year, month, day, hour, minute, second);
         return false;
     }
@@ -3757,7 +3710,7 @@ static bool custom_strptime(const char* time_str, const char* format, struct tm*
     tm_info->tm_sec = second;
     tm_info->tm_isdst = -1; // 让mktime自动判断夏令时
     
-    log_file_fwrite("[CUSTOM_STRPTIME] Parsing successful: tm_year=%d, tm_mon=%d, tm_mday=%d, tm_hour=%d, tm_min=%d, tm_sec=%d", 
+    log_file_fwrite("[CUSTOM_STRPTIME] 成功解析时间字符串: tm_year=%d, tm_mon=%d, tm_mday=%d, tm_hour=%d, tm_min=%d, tm_sec=%d", 
                    tm_info->tm_year, tm_info->tm_mon, tm_info->tm_mday, tm_info->tm_hour, tm_info->tm_min, tm_info->tm_sec);
     
     return true;
