@@ -1507,7 +1507,6 @@ static void Get_Save_And_Upload() {
     char zip_path[FS_MAX_PATH] = {0};
     save_success = generate_save_archive(g_previous_game_tid,zip_path);
 
-    // 如果网络可用，直接切换到标准套接字
     // 如果切换失败，直接终止任务
     if (R_FAILED(switch_to_webdav_mode())) goto end;
 
@@ -1516,7 +1515,7 @@ static void Get_Save_And_Upload() {
 
     // 如果获取存档失败，直接终止任务
     if (!save_success) goto end;
-    
+
     // 如果未启用上传功能，直接终止任务
     if (!webdav_config.enabled){
         backuplog_write("未启用上传功能，终止任务！");
