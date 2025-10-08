@@ -130,7 +130,7 @@ static bool g_led_enabled = false;
 static bool g_back_led_enabled = false;
 static bool g_backup_notify_enabled = false;
 static volatile bool g_should_exit = false;
-static u32 g_webdav_tcp_buffer_max_size = 0;
+static u32 g_webdav_tcp_buffer_max_size = 0x20000;
 
 // 用户信息相关全局变量
 static AccountUid g_current_game_user_uid = {0};
@@ -208,7 +208,7 @@ static void cleanup_standard_sockets(void);
 
 // 网络状态与时间同步
 static bool is_network_available(void);
-static time_t get_ntp_time(void);
+static void get_ntp_time(char* timestamp_buffer);
 
 // 服务模式切换
 Result switch_to_webdav_mode(void);
@@ -237,7 +237,7 @@ static void Get_Save_And_Upload();
 static time_t parse_timestamp_from_filename(const char* filename, int* sequence);
 static int compare_save_files(const void* a, const void* b);
 static void manage_backup_count(const char* username, const char* game_folder);
-static void manage_webdav_backup_count(const char* username, const char* game_folder);
+static void manage_webdav_backup_count();
 
 // 文件流处理
 static Result stream_zip_to_sdcard(struct mmz_Data* mz, FsFileSystem* sdmc_fs, const char* output_path);
@@ -255,7 +255,7 @@ static size_t webdav_upload_read_callback(void* ptr, size_t size, size_t nmemb, 
 static void get_latest_webdav_timestamp_and_sequence(const char* username, const char* folder_name, 
                                                      char* latest_timestamp, size_t timestamp_size, 
                                                      int* sequence_num);
-static Result stream_zip_to_webdav(const char* local_zip_path, u64 tid);
+static Result stream_zip_to_webdav(const char* local_zip_path, u64 tid, char* ntp_timestamp);
 
 // ========== 用户界面与通知 ==========
 // LED效果控制
@@ -938,7 +938,18 @@ static bool is_network_available(void) {
     return false;
 }
 
-static time_t get_ntp_time(void) {
+static void get_ntp_time(char* timestamp_buffer) {
+
+    // 计时开始 - 使用高精度时钟统计切换标准套接字耗时。
+    struct timespec start_time, end_time;
+    clock_gettime(CLOCK_MONOTONIC, &start_time);
+
+    // 检查网络是否可用
+    if (!is_network_available()) {
+        log_file_write("网络不可用，无法同步时间");
+        return;
+    }
+
     int server_sock = -1;
     struct addrinfo hints, *servinfo = NULL;
     int status;
@@ -946,25 +957,6 @@ static time_t get_ntp_time(void) {
     bool time_retrieved = false;
     
     log_file_write("准备访问NPT服务器，同步时间");
-    
-    // 检查网络是否可用
-    if (!is_network_available()) {
-        log_file_write("网络不可用，无法同步时间");
-        return 0;
-    }
-    log_file_write("网络可用，准备同步时间");
-    
-    // 确保标准套接字已初始化
-    if (!g_standard_socket_initialized) {
-        log_file_write("标准套接字未初始化，正在初始化...");
-        if (R_FAILED(initialize_standard_sockets())) {
-            log_file_write("初始化标准套接字失败");
-            return 0;
-        }
-        log_file_write("标准套接字初始化成功");
-    } else {
-        log_file_write("标准套接字已初始化");
-    }
     
     // 设置地址信息
     memset(&hints, 0, sizeof(hints));
@@ -974,10 +966,8 @@ static time_t get_ntp_time(void) {
     // 获取NTP服务器地址
     log_file_write("正在解析NTP服务器地址...");
     if ((status = getaddrinfo(NTP_DEFAULT_SERVER, NTP_DEFAULT_PORT, &hints, &servinfo)) != 0) {
-        char error_buf[256];
-        snprintf(error_buf, sizeof(error_buf), "NTP getaddrinfo失败: %s", gai_strerror(status));
-        log_file_write(error_buf);
-        return 0;
+        log_file_fwrite("NTP getaddrinfo失败: %s", gai_strerror(status));
+        return;
     }
     log_file_write("NTP服务器地址解析成功");
     
@@ -987,9 +977,7 @@ static time_t get_ntp_time(void) {
         log_file_write("正在尝试创建套接字...");
         server_sock = socket(ap->ai_family, ap->ai_socktype, ap->ai_protocol);
         if (server_sock == -1) {
-            char sock_error[64];
-            snprintf(sock_error, sizeof(sock_error), "创建套接字失败: %d", errno);
-            log_file_write(sock_error);
+            log_file_fwrite("创建套接字失败: %d", errno);
             continue;
         }
         log_file_write("套接字创建成功");
@@ -997,18 +985,14 @@ static time_t get_ntp_time(void) {
         // 设置超时
         struct timeval tv = {.tv_sec = NTP_DEFAULT_TIMEOUT, .tv_usec = 0};
         if (setsockopt(server_sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) < 0) {
-            char opt_error[64];
-            snprintf(opt_error, sizeof(opt_error), "设置SO_RCVTIMEO失败: %d", errno);
-            log_file_write(opt_error);
+            log_file_fwrite("设置SO_RCVTIMEO失败: %d", errno);
             close(server_sock);
             server_sock = -1;
             continue;
         }
         
         if (setsockopt(server_sock, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv)) < 0) {
-            char opt_error[64];
-            snprintf(opt_error, sizeof(opt_error), "设置SO_SNDTIMEO失败: %d", errno);
-            log_file_write(opt_error);
+            log_file_fwrite("设置SO_SNDTIMEO失败: %d", errno);
             close(server_sock);
             server_sock = -1;
             continue;
@@ -1023,16 +1007,13 @@ static time_t get_ntp_time(void) {
         log_file_write("正在发送NTP请求...");
         ssize_t sent_bytes = sendto(server_sock, &packet, sizeof(packet), 0, ap->ai_addr, ap->ai_addrlen);
         if (sent_bytes == -1) {
-            char send_error[64];
-            snprintf(send_error, sizeof(send_error), "发送NTP请求失败: %d", errno);
-            log_file_write(send_error);
+            log_file_fwrite("发送NTP请求失败: %d", errno);
             close(server_sock);
             server_sock = -1;
             continue;
         }
-        char send_info[64];
-        snprintf(send_info, sizeof(send_info), "已发送NTP请求: %zd 字节", sent_bytes);
-        log_file_write(send_info);
+
+        log_file_fwrite("已发送NTP请求: %zd 字节", sent_bytes);
         
         // 接收NTP响应
         log_file_write("正在接收NTP响应...");
@@ -1040,16 +1021,12 @@ static time_t get_ntp_time(void) {
         socklen_t server_addr_len = sizeof(server_addr);
         ssize_t recv_bytes = recvfrom(server_sock, &packet, sizeof(packet), 0, (struct sockaddr*)&server_addr, &server_addr_len);
         if (recv_bytes == -1) {
-            char recv_error[64];
-            snprintf(recv_error, sizeof(recv_error), "接收NTP响应失败: %d", errno);
-            log_file_write(recv_error);
+            log_file_fwrite("接收NTP响应失败: %d", errno);
             close(server_sock);
             server_sock = -1;
             continue;
         }
-        char recv_info[64];
-        snprintf(recv_info, sizeof(recv_info), "已接收NTP响应: %zd 字节", recv_bytes);
-        log_file_write(recv_info);
+        log_file_fwrite("已接收NTP响应: %zd 字节", recv_bytes);
         
         time_retrieved = true;
         break;
@@ -1064,7 +1041,7 @@ static time_t get_ntp_time(void) {
         if (server_sock != -1) {
             close(server_sock);
         }
-        return 0;
+        return;
     }
     
     close(server_sock);
@@ -1074,12 +1051,15 @@ static time_t get_ntp_time(void) {
     time_t ntp_time = packet.recv_ts_secs - UNIX_OFFSET;
     
     // 记录成功获取NTP时间
-    char time_buf[128];
     struct tm* tm_info = localtime(&ntp_time);
-    strftime(time_buf, sizeof(time_buf), "已成功获取NTP时间: %Y-%m-%d %H:%M:%S", tm_info);
-    log_file_write(time_buf);
-    
-    return ntp_time;
+    strftime(timestamp_buffer, 64, "%Y.%m.%d@%H.%M.%S", tm_info);
+
+    // 计时结束 - 计算执行时间并输出到0.01s精度
+    clock_gettime(CLOCK_MONOTONIC, &end_time);
+    double elapsed_time = (end_time.tv_sec - start_time.tv_sec) + 
+                         (end_time.tv_nsec - start_time.tv_nsec) / 1000000000.0;
+    log_file_fwrite("[计时]NTP时间耗时: %.2f 秒", elapsed_time);
+
 }
 
 // 服务模式切换
@@ -1097,7 +1077,7 @@ Result switch_to_webdav_mode(void) {
     if (R_SUCCEEDED(rc)) {
         g_webdav_handshake_in_progress = true;
         log_file_write("已成功切换到WebDAV模式！");
-        // 延迟100ms，标准套接字生效
+        // 延迟300ms，标准套接字生效
         svcSleepThread(100000000LL); // 100ms
     } else log_file_fwrite("无法切换到WebDAV模式！错误码: 0x%x", rc);
     
@@ -1245,37 +1225,13 @@ static void auto_backup_thread(void* arg) {
                 if (commit_change_count >= 1) {
                     // 开启呼吸灯
                     bool led_enabled = Show_Back_LED();
-                    // 检测到存档变化时发送Ultrahand通知
-                    create_ultrahand_notification("存档已变化，开始备份", 1);
-                    log_file_fwrite("开始创建游戏 %016lX 的存档备份 - CommitID 变化次数: %d", g_previous_game_tid, commit_change_count);
-
-
                     // 生成本地存档和上传到WebDAV的综合函数
-                    // 不写在这里面，是因为容易导致多层嵌套，影响阅读
-                    // 结果的成功与失败，在这个函数内部处理
-                    // 这里不用管他的返回值了
+                    // 其内部会处理结果与日志，因此不需要返回值了，不然这里会嵌套多层
                     Get_Save_And_Upload();
-
-                    char zip_path[FS_MAX_PATH] = {0};
-                    // 生成存档，如果成功则进行上传。
-                    // 这块暂时这么写，后面会修改这部分。
-                    if(generate_save_archive(g_previous_game_tid,zip_path)) {
-                        if (webdav_handshake()) {
-                            Result upload_rc = stream_zip_to_webdav(zip_path, g_previous_game_tid);
-                            if (R_SUCCEEDED(upload_rc)) {
-                                switch_to_ftp_mode();
-                            } 
-
-                        }
-                    }
-
                     // 关闭LED效果作为完成提示，只有在成功开启时才关闭
                     if (led_enabled) Close_Back_LED();
-
                 } 
-                else {
-                    log_file_fwrite("跳过游戏 %016lX 的存档备份 - CommitID 未变化 (变化次数: %d)", g_previous_game_tid, commit_change_count);
-                }
+                else log_file_fwrite("跳过游戏 %016lX 的存档备份 - CommitID 未变化 (变化次数: %d)", g_previous_game_tid, commit_change_count);
                 
             }
             // 重置相关变量，从头开始
@@ -1527,75 +1483,98 @@ static u64 Get_Current_Commit_Id(u64 current_tid) {
 
 
 
-// 生成本地存档和上传到WebDAV的综合函数
+// 生成本地存档和上传的综合函数
 static void Get_Save_And_Upload() {
+
+    // 计时开始 - 使用高精度时钟统计存档生成时间
+    struct timespec start_time, end_time;
+    clock_gettime(CLOCK_MONOTONIC, &start_time);
 
     // 获取游戏的中文（失败就获取别的）名用来写入备份日志
     NcmContentId content_id = {0};
     struct AppName app_name = {0};
     get_app_name(g_previous_game_tid, &content_id, &app_name);
 
-    // 生成本地存档文件
-    char zip_path[FS_MAX_PATH] = {0};
-    bool save_success = generate_save_archive(g_previous_game_tid,zip_path);
+    // 生成本地存档和上传结果的标志，默认为成功
+    bool save_success = true;
+    bool upload_success = true;
 
     // 生成存档依赖BSD套接字，所以必须在生成存档完成后，才能切换到标准套接字
     char NTPtimes[64] = "0000.00.00@00.00.00";
-    // 如果自动上传未开启，但是网络可用(这段NTP的逻辑可能会修改为默认使用这个时间，但是需要重构别的地方代码，不过我暂时没时间，先这样用)
-    if (is_network_available()) {
-        // 获取NTP时间戳用于备份日志(只用于日志)
-        time_t ntp_time = get_ntp_time();
-        if (ntp_time != 0){
-            // 使用NTP时间戳
-            struct tm* tm_info = localtime(&ntp_time);
-            strftime(NTPtimes, sizeof(NTPtimes), "%Y.%m.%d@%H.%M.%S", tm_info);
-        } else log_file_write("NTP时间获取失败！");
-    }
 
-    if (!save_success){
-        // 备份失败时发送Ultrahand通知
-        create_ultrahand_notification("本地备份失败", 2);
-        // 写入备份记录: "保存失败|游戏名|用户名|时间戳"
-        backuplog_fwrite("本地备份失败|%s|%s|%s", app_name.str, g_current_game_user_name, NTPtimes);
-        return;
-    }
-
-    create_ultrahand_notification("本地备份完成", 1);
-
-    // 如果没有开启上传功能，或者没有网络，到此任务终止
-    if (!webdav_config.enabled || !is_network_available()) {
-        backuplog_fwrite("本地备份成功|%s|%s|%s", app_name.str, g_current_game_user_name, NTPtimes);
-        log_file_write("未开启自动上传，或者未连接网络！任务结束！");
-        return;
-    }
-
-    // 如果握手失败代表仅备份至本地(内部会处理FTP和WebDAV的切换)
-    if (!webdav_handshake()) {
-        backuplog_fwrite("云端备份失败，仅备份至本地|%s|%s|%s", app_name.str, g_current_game_user_name, NTPtimes);
-        return;
-    }
-
-    // 上传到网盘
-    Result upload_rc = stream_zip_to_webdav(zip_path, g_previous_game_tid);
-    if (R_SUCCEEDED(upload_rc)) {
-        backuplog_fwrite("云端备份成功|%s|%s|%s", app_name.str, g_current_game_user_name, NTPtimes);
-    } else {
-        backuplog_fwrite("云端备份失败|%s|%s|%s", app_name.str, g_current_game_user_name, NTPtimes);
-    }
-
-    // 切换回FTP模式
-    switch_to_ftp_mode();
+    // 生成本地存档文件
+    // 不需要开始备份的弹窗，因为本地生成非常快，很快就知道是成功还是失败
+    // 不然会快速弹两次弹窗，影响体验
+    char zip_path[FS_MAX_PATH] = {0};
    
+    save_success = generate_save_archive(g_previous_game_tid,zip_path);
+
+    // 如果获取存档失败，直接终止任务
+    if (!save_success) goto end;
+
+    // 如果网络可用，直接切换到标准套接字
+    // 如果切换失败，直接终止任务
+    if (R_FAILED(switch_to_webdav_mode())) goto end;
+
+    // 切换成功，直接获取NTP时间
+    get_ntp_time(NTPtimes);
+
+    // 如果未启用上传功能，直接终止任务
+    if (!webdav_config.enabled){
+        backuplog_write("未启用上传功能，终止任务！");
+        // 能执行到这里则代表本地备份肯定是成功的
+        create_ultrahand_notification("本地备份完成", 1);
+        backuplog_fwrite("本地备份成功|%s|%s|%s", app_name.str, g_current_game_user_name, NTPtimes);
+        goto end;
+    }
+
+    // 如果时间戳获取失败，则终止任务
+    if (strcmp(NTPtimes, "0000.00.00@00.00.00") == 0) {
+        upload_success = false;
+        goto end;
+    }
+
+    // 如果握手失败则终止任务
+    if (!webdav_handshake()) {
+        upload_success = false;
+        goto end;
+    }
+
+    // 上传到网盘，记录日志
+    create_ultrahand_notification("开始云端备份", 1);
+    Result upload_rc = stream_zip_to_webdav(zip_path, g_previous_game_tid, NTPtimes);
+    if (R_FAILED(upload_rc)) {
+        upload_success = false;
+        goto end;
+    }
+
+    // 如果上传成功，记录日志
+    create_ultrahand_notification("云端上传成功", 1);
+    backuplog_fwrite("云端备份成功|%s|%s|%s", app_name.str, g_current_game_user_name, NTPtimes);
+
+end:
+
+    // 统一处理失败的日志记录
+    if (!save_success) {
+        create_ultrahand_notification("本地备份失败", 2);
+        backuplog_fwrite("本地备份失败|%s|%s|%s", app_name.str, g_current_game_user_name, NTPtimes);
+
+    } else if (!upload_success) {
+        create_ultrahand_notification("云端备份失败", 2);
+        backuplog_fwrite("云端备份失败，仅备份至本地|%s|%s|%s", app_name.str, g_current_game_user_name, NTPtimes);
+    }
+
+    // 计时结束 - 计算执行时间并输出到0.01s精度
+    clock_gettime(CLOCK_MONOTONIC, &end_time);
+    double elapsed_time = (end_time.tv_sec - start_time.tv_sec) + 
+                        (end_time.tv_nsec - start_time.tv_nsec) / 1000000000.0;
+    log_file_fwrite("[计时]总流程耗时: %.2f 秒", elapsed_time);
+
+    // 这里通过这个全局变量来判断是否需要切换模式，不用RC
+    // 因为switch_to_ftp_mode的RC返回值不能准确判断是否切换成功
+    if (g_webdav_handshake_in_progress) switch_to_ftp_mode();
+
 }
-
-
-
-
-
-
-
-
-
 
 
 static bool create_game_folder(u64 tid) {
@@ -1641,6 +1620,11 @@ static bool create_game_folder(u64 tid) {
 }
 
 static bool generate_save_archive(u64 tid, char* out_zip_path) {
+
+    // 计时开始 - 使用高精度时钟统计存档生成时间
+    struct timespec start_time, end_time;
+    clock_gettime(CLOCK_MONOTONIC, &start_time);
+
 
     // 添加调试日志：开始生成存档
     log_file_fwrite("准备为 TID: %016lX 生成存档", tid);
@@ -1709,7 +1693,6 @@ static bool generate_save_archive(u64 tid, char* out_zip_path) {
     rc = mmz_build_zip(&mz, &save_fs, tid, target_user, FsSaveDataSpaceId_User);
     if (R_FAILED(rc)) {
         log_file_fwrite("警告: 无法为TID %016lX 和用户 %s 生成存档元数据: 0x%x", tid, username, rc);
-        create_ultrahand_notification("本地备份生成失败", 2);
         goto CLEANUP;
     }
     // 标记mmz已经初始化，后面需要清理
@@ -1772,18 +1755,14 @@ CLEANUP:
     } else log_file_fwrite("已成功删除临时文件 %s", temp_path);
 
     // 记录结果
-    if (local_backup_success) {
-        // 写入备份记录: "保存成功|游戏名|用户名|时间戳"
-        if (!webdav_config.enabled) backuplog_fwrite("本地备份成功|%s|%s|%s", app_name.str, username, latest_timestamp);
-        create_ultrahand_notification("本地备份完成", 1);
-        log_file_fwrite("已完成为TID %016lX 和用户 %s 生成存档元数据", tid, username);
-    } else {
-        log_file_fwrite("警告: 无法流式传输用户 %s 的存档元数据到SD卡: 0x%x", username, rc);
-        // 备份失败时发送Ultrahand通知
-        create_ultrahand_notification("本地备份失败", 2);
-        // 写入备份记录: "保存失败|游戏名|用户名|时间戳"
-        backuplog_fwrite("本地备份失败|%s|%s|%s", app_name.str, username, latest_timestamp);
-    }
+    if (local_backup_success) log_file_fwrite("已完成为TID %016lX 和用户 %s 生成存档元数据", tid, username);
+    else log_file_fwrite("警告: 无法流式传输用户 %s 的存档元数据到SD卡: 0x%x", username, rc);
+
+    // 计时结束 - 计算执行时间并输出到0.01s精度
+    clock_gettime(CLOCK_MONOTONIC, &end_time);
+    double elapsed_time = (end_time.tv_sec - start_time.tv_sec) + 
+                         (end_time.tv_nsec - start_time.tv_nsec) / 1000000000.0;
+    log_file_fwrite("[计时]存档生成耗时: %.2f 秒", elapsed_time);
 
     return local_backup_success;
 }
@@ -2089,54 +2068,24 @@ static void manage_backup_count(const char* username, const char* game_folder) {
 }
 
 // 管理WebDAV端存档数量，删除最旧的远程存档
-static void manage_webdav_backup_count(const char* username, const char* game_folder) {
+static void manage_webdav_backup_count() {
+
+    // 计时开始 - 使用高精度时钟统计存档生成时间
+    struct timespec start_time, end_time;
+    clock_gettime(CLOCK_MONOTONIC, &start_time);
+
+
     if (g_maxback <= 0) {
         return; // maxback未启用或设置为0
-    }
-    
-    // 参数验证
-    if (!username || strlen(username) == 0) {
-        char debug_buf[256] = {0};
-        snprintf(debug_buf, sizeof(debug_buf), "WebDAV 存档管理失败: 用户名为空");
-        log_file_write(debug_buf);
-        return;
-    }
-    
-    if (!game_folder || strlen(game_folder) == 0) {
-        char debug_buf[256] = {0};
-        snprintf(debug_buf, sizeof(debug_buf), "WebDAV 存档管理失败: 游戏文件夹为空");
-        log_file_write(debug_buf);
-        return;
     }
     
     CURL* curl;
     CURLcode res;
     char url[512];
-    char debug_buf[256];
-    
-    // 清理和验证用户名
-    char sanitized_username[256] = {0};
-    strncpy(sanitized_username, username, sizeof(sanitized_username) - 1);
-    sanitize_filename(sanitized_username);
-    
-    // 验证清理后的用户名是否有效
-    bool has_valid_chars = false;
-    for (int i = 0; sanitized_username[i] != '\0'; i++) {
-        if (isalnum((unsigned char)sanitized_username[i]) || sanitized_username[i] == '_' || sanitized_username[i] == '-') {
-            has_valid_chars = true;
-            break;
-        }
-    }
-    
-    if (!has_valid_chars || strlen(sanitized_username) == 0) {
-        snprintf(debug_buf, sizeof(debug_buf), "WebDAV 存档管理失败: 清理后的用户名无效: %s", username);
-        log_file_write(debug_buf);
-        return;
-    }
     
     // 对游戏文件夹名进行URL编码，处理空格等特殊字符
     char encoded_game_folder[256];
-    strncpy(encoded_game_folder, game_folder, sizeof(encoded_game_folder) - 1);
+    strncpy(encoded_game_folder, folder_name, sizeof(encoded_game_folder) - 1);
     encoded_game_folder[sizeof(encoded_game_folder) - 1] = '\0';
     
     // 简单的空格替换为%20（更完整的URL编码需要更复杂的处理）
@@ -2153,32 +2102,28 @@ static void manage_webdav_backup_count(const char* username, const char* game_fo
     if (webdav_config.basepath[0] != '\0') {
         if (webdav_config.origin[strlen(webdav_config.origin)-1] == '/' && webdav_config.basepath[0] == '/') {
             snprintf(url, sizeof(url), "%s%sAutoBack/%s/%s/", 
-                     webdav_config.origin, webdav_config.basepath + 1, sanitized_username, encoded_game_folder);
+                     webdav_config.origin, webdav_config.basepath + 1, g_current_game_user_name, encoded_game_folder);
         } else if (webdav_config.origin[strlen(webdav_config.origin)-1] != '/' && webdav_config.basepath[0] != '/') {
             snprintf(url, sizeof(url), "%s/%s/AutoBack/%s/%s/", 
-                     webdav_config.origin, webdav_config.basepath, sanitized_username, encoded_game_folder);
+                     webdav_config.origin, webdav_config.basepath, g_current_game_user_name, encoded_game_folder);
         } else {
             snprintf(url, sizeof(url), "%s%sAutoBack/%s/%s/", 
-                     webdav_config.origin, webdav_config.basepath, sanitized_username, encoded_game_folder);
+                     webdav_config.origin, webdav_config.basepath, g_current_game_user_name, encoded_game_folder);
         }
     } else {
         if (webdav_config.origin[strlen(webdav_config.origin)-1] == '/') {
-            snprintf(url, sizeof(url), "%sAutoBack/%s/%s/", webdav_config.origin, sanitized_username, encoded_game_folder);
+            snprintf(url, sizeof(url), "%sAutoBack/%s/%s/", webdav_config.origin, g_current_game_user_name, encoded_game_folder);
         } else {
-            snprintf(url, sizeof(url), "%s/AutoBack/%s/%s/", webdav_config.origin, sanitized_username, encoded_game_folder);
+            snprintf(url, sizeof(url), "%s/AutoBack/%s/%s/", webdav_config.origin, g_current_game_user_name, encoded_game_folder);
         }
     }
     
-    snprintf(debug_buf, sizeof(debug_buf), "正在管理 WebDAV 存档数量，用户: %s, 游戏: %s", sanitized_username, game_folder);
-    log_file_write(debug_buf);
-    
-    snprintf(debug_buf, sizeof(debug_buf), "PROPFIND URL: %s", url);
-    log_file_write(debug_buf);
+    log_file_fwrite("正在管理 WebDAV 存档数量，用户: %s, 游戏: %s", g_current_game_user_name, folder_name);
+    log_file_fwrite("PROPFIND URL: %s", url);
     
     curl = curl_easy_init();
     if (!curl) {
-        snprintf(debug_buf, sizeof(debug_buf), "初始化 CURL 失败，用于 WebDAV 存档管理");
-        log_file_write(debug_buf);
+        log_file_write("初始化 CURL 失败，用于 WebDAV 存档管理");
         return;
     }
     
@@ -2210,8 +2155,7 @@ static void manage_webdav_backup_count(const char* username, const char* game_fo
     // 初始化响应数据缓冲区
     response_data.data = malloc(1);
     if (response_data.data == NULL) {
-        snprintf(debug_buf, sizeof(debug_buf), "WebDAV 存档管理失败: 分配响应数据内存失败");
-        log_file_write(debug_buf);
+        log_file_write("WebDAV 存档管理失败: 分配响应数据内存失败");
         curl_easy_cleanup(curl);
         curl_slist_free_all(headers);
         return;
@@ -2229,17 +2173,14 @@ static void manage_webdav_backup_count(const char* username, const char* game_fo
         long http_code = 0;
         curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
         
-        snprintf(debug_buf, sizeof(debug_buf), "WebDAV 存档管理成功: HTTP %ld", http_code);
-        log_file_write(debug_buf);
+        log_file_fwrite("WebDAV 存档管理成功: HTTP %ld", http_code);
         
         if (http_code == 207) { // Multi-Status，PROPFIND成功
           
             // 添加调试日志，输出原始XML响应
-            snprintf(debug_buf, sizeof(debug_buf), "WebDAV 存档管理成功: 原始XML响应 (前1000字符): %.1000s", response_data.data ? response_data.data : "(null)");
-            log_file_write(debug_buf);
+            log_file_fwrite("WebDAV 存档管理成功: 原始XML响应 (前1000字符): %.1000s", response_data.data ? response_data.data : "(null)");
             // 输出XML响应总长度
-            snprintf(debug_buf, sizeof(debug_buf), "WebDAV 存档管理成功: XML响应总长度: %zu 字节", response_data.size);
-            log_file_write(debug_buf);
+            log_file_fwrite("WebDAV 存档管理成功: XML响应总长度: %zu 字节", response_data.size);
             
             // 查找所有包含用户名的ZIP文件
             char* file_list[128]; // 最多支持128个文件
@@ -2249,14 +2190,12 @@ static void manage_webdav_backup_count(const char* username, const char* game_fo
             // 添加调试信息：检查XML响应是否包含预期的命名空间
             if (strstr(response_data.data, "xmlns:d=\"DAV:\"") == NULL && 
                 strstr(response_data.data, "xmlns:D=\"DAV:\"") == NULL) {
-                snprintf(debug_buf, sizeof(debug_buf), "WebDAV 存档管理成功: XML响应不包含预期的 DAV 命名空间");
-                log_file_write(debug_buf);
+                log_file_write("WebDAV 存档管理成功: XML响应不包含预期的 DAV 命名空间");
             }
             
             // 检查XML响应是否包含multistatus标签
             if (strstr(response_data.data, "multistatus") == NULL) {
-                snprintf(debug_buf, sizeof(debug_buf), "Warning: XML response does not contain multistatus tag");
-                log_file_write(debug_buf);
+                log_file_write("Warning: XML响应不包含 multistatus 标签");
             }
             
             while (current_pos != NULL && file_count < 128) {
@@ -2268,8 +2207,7 @@ static void manage_webdav_backup_count(const char* username, const char* game_fo
                         href_start = strstr(current_pos, "<href>");
                         if (href_start == NULL) {
                             // 添加调试信息：记录找不到href标签时的位置
-                            snprintf(debug_buf, sizeof(debug_buf), "No href tag found at position: %ld", current_pos - response_data.data);
-                            log_file_write(debug_buf);
+                            log_file_fwrite("在指定位置未找到 href 标签: %ld", current_pos - response_data.data);
                             break;
                         } else {
                             href_start += 6; // 跳过<href>
@@ -2299,13 +2237,11 @@ static void manage_webdav_backup_count(const char* username, const char* game_fo
                     filename[href_len] = '\0';
                     
                     // 添加调试信息：记录找到的文件名
-                    snprintf(debug_buf, sizeof(debug_buf), "Found file in XML: %s", filename);
-                    log_file_write(debug_buf);
+                    log_file_fwrite("在XML响应中找到文件: %s", filename);
                     
                     // 检查是否是ZIP文件（移除用户名匹配逻辑）
                     if (strstr(filename, ".zip")) {
-                        snprintf(debug_buf, sizeof(debug_buf), "File is a .zip file: %s", filename);
-                        log_file_write(debug_buf);
+                        log_file_fwrite("文件 %s 是 .zip 文件", filename);
                         // 提取纯文件名（不含路径）
                         char* last_slash = strrchr(filename, '/');
                         if (last_slash != NULL) {
@@ -2334,8 +2270,7 @@ static void manage_webdav_backup_count(const char* username, const char* game_fo
                 }
             }
             
-            snprintf(debug_buf, sizeof(debug_buf), "Found %d WebDAV backup files", file_count);
-            log_file_write(debug_buf);
+            log_file_fwrite("找到 %d 个 WebDAV 备份文件", file_count);
             
             // 如果文件数量超过maxback，删除最旧的文件
             if (file_count >= g_maxback) {
@@ -2381,19 +2316,19 @@ static void manage_webdav_backup_count(const char* username, const char* game_fo
                     if (webdav_config.basepath[0] != '\0') {
                         if (webdav_config.origin[strlen(webdav_config.origin)-1] == '/' && webdav_config.basepath[0] == '/') {
                             snprintf(delete_url, sizeof(delete_url), "%s%sAutoBack/%s/%s/%s", 
-                                     webdav_config.origin, webdav_config.basepath + 1, sanitized_username, encoded_game_folder, file_list[i]);
+                                     webdav_config.origin, webdav_config.basepath + 1, g_current_game_user_name, encoded_game_folder, file_list[i]);
                         } else if (webdav_config.origin[strlen(webdav_config.origin)-1] != '/' && webdav_config.basepath[0] != '/') {
                             snprintf(delete_url, sizeof(delete_url), "%s/%s/AutoBack/%s/%s/%s", 
-                                     webdav_config.origin, webdav_config.basepath, sanitized_username, encoded_game_folder, file_list[i]);
+                                     webdav_config.origin, webdav_config.basepath, g_current_game_user_name, encoded_game_folder, file_list[i]);
                         } else {
                             snprintf(delete_url, sizeof(delete_url), "%s%sAutoBack/%s/%s/%s", 
-                                     webdav_config.origin, webdav_config.basepath, sanitized_username, encoded_game_folder, file_list[i]);
+                                     webdav_config.origin, webdav_config.basepath, g_current_game_user_name, encoded_game_folder, file_list[i]);
                         }
                     } else {
                         if (webdav_config.origin[strlen(webdav_config.origin)-1] == '/') {
-                            snprintf(delete_url, sizeof(delete_url), "%sAutoBack/%s/%s/%s", webdav_config.origin, sanitized_username, encoded_game_folder, file_list[i]);
+                            snprintf(delete_url, sizeof(delete_url), "%sAutoBack/%s/%s/%s", webdav_config.origin, g_current_game_user_name, encoded_game_folder, file_list[i]);
                         } else {
-                            snprintf(delete_url, sizeof(delete_url), "%s/AutoBack/%s/%s/%s", webdav_config.origin, sanitized_username, encoded_game_folder, file_list[i]);
+                            snprintf(delete_url, sizeof(delete_url), "%s/AutoBack/%s/%s/%s", webdav_config.origin, g_current_game_user_name, encoded_game_folder, file_list[i]);
                         }
                     }
                     
@@ -2413,15 +2348,12 @@ static void manage_webdav_backup_count(const char* username, const char* game_fo
                             curl_easy_getinfo(delete_curl, CURLINFO_RESPONSE_CODE, &delete_http_code);
                             
                             if (delete_http_code == 204 || delete_http_code == 200) {
-                                snprintf(debug_buf, sizeof(debug_buf), "Deleted old WebDAV backup: %s", file_list[i]);
-                                log_file_write(debug_buf);
+                                log_file_fwrite("成功删除旧 WebDAV 备份: %s", file_list[i]);
                             } else {
-                                snprintf(debug_buf, sizeof(debug_buf), "Failed to delete WebDAV backup %s: HTTP %ld", file_list[i], delete_http_code);
-                                log_file_write(debug_buf);
+                                log_file_fwrite("删除 WebDAV 备份 %s 失败: HTTP %ld", file_list[i], delete_http_code);
                             }
                         } else {
-                            snprintf(debug_buf, sizeof(debug_buf), "DELETE request failed for %s: %d", file_list[i], delete_res);
-                            log_file_write(debug_buf);
+                            log_file_fwrite("DELETE 请求 %s 失败: %d", file_list[i], delete_res);
                         }
                         
                         curl_easy_cleanup(delete_curl);
@@ -2436,12 +2368,10 @@ static void manage_webdav_backup_count(const char* username, const char* game_fo
                 }
             }
         } else {
-            snprintf(debug_buf, sizeof(debug_buf), "WebDAV PROPFIND failed for backup management: HTTP %ld", http_code);
-            log_file_write(debug_buf);
+            log_file_fwrite("WebDAV PROPFIND 请求失败: HTTP %ld", http_code);
         }
     } else {
-        snprintf(debug_buf, sizeof(debug_buf), "WebDAV PROPFIND request failed: %d", res);
-        log_file_write(debug_buf);
+        log_file_fwrite("WebDAV PROPFIND 请求失败: %d", res);
     }
     
     // 清理资源
@@ -2450,6 +2380,13 @@ static void manage_webdav_backup_count(const char* username, const char* game_fo
     if (response_data.data != NULL) {
         free(response_data.data);
     }
+
+    // 计时结束 - 计算执行时间并输出到0.01s精度
+    clock_gettime(CLOCK_MONOTONIC, &end_time);
+    double elapsed_time = (end_time.tv_sec - start_time.tv_sec) + 
+                        (end_time.tv_nsec - start_time.tv_nsec) / 1000000000.0;
+    log_file_fwrite("[计时]管理WEBDAV端存档数量耗时: %.2f 秒", elapsed_time);
+
 }
 
 // 文件流处理
@@ -2585,15 +2522,14 @@ static Result stream_zip_to_sdcard(struct mmz_Data* mz, FsFileSystem* sdmc_fs, c
 // WebDAV连接与认证
 static bool webdav_handshake(void) {
 
+    // 计时开始 - 使用高精度时钟统计存档生成时间
+    struct timespec start_time, end_time;
+    clock_gettime(CLOCK_MONOTONIC, &start_time);
+
     CURL *curl;
     CURLcode res;
     char url[128];
     bool handshake_success = false;
-    
-    // 切换到WebDAV模式（清理BSD套接字，初始化标准套接字）
-    if (R_FAILED(switch_to_webdav_mode())) goto end;
-    
-    log_file_write("已成功切换到WebDAV模式");
     
     // 构造完整的 WebDAV URL（注意末尾斜杠）
     snprintf(url, sizeof(url), "%s/%s/", webdav_config.origin, webdav_config.basepath);
@@ -2722,10 +2658,11 @@ end:
         free(response_data.data);
     }
 
-    if (!handshake_success) {
-        log_file_write("WebDAV 握手失败，需要切换回 FTP 模式");
-        switch_to_ftp_mode();
-    }
+    // 计时结束 - 计算执行时间并输出到0.01s精度
+    clock_gettime(CLOCK_MONOTONIC, &end_time);
+    double elapsed_time = (end_time.tv_sec - start_time.tv_sec) + 
+                        (end_time.tv_nsec - start_time.tv_nsec) / 1000000000.0;
+    log_file_fwrite("[计时]WEBDAV握手耗时: %.2f 秒", elapsed_time);
     
     // 返回true表示握手成功
     return handshake_success;
@@ -3069,10 +3006,11 @@ static void get_latest_webdav_timestamp_and_sequence(const char* username, const
 }
 
 // 添加流式传输ZIP到WebDAV的函数 - 从本地ZIP文件上传
-static Result stream_zip_to_webdav(const char* local_zip_path, u64 tid) {
+static Result stream_zip_to_webdav(const char* local_zip_path, u64 tid, char* ntp_timestamp) {
 
-    // 需要重构，因为时间问题，暂时先这样
-    
+    // 计时开始 - 使用高精度时钟统计存档生成时间
+    struct timespec start_time, end_time;
+    clock_gettime(CLOCK_MONOTONIC, &start_time);
 
     CURL* curl;
     CURLcode res;
@@ -3081,30 +3019,9 @@ static Result stream_zip_to_webdav(const char* local_zip_path, u64 tid) {
     FsFile zip_file;
 
     // 在上传前管理WebDAV端存档数量（与本地存档保持一致的时序）
-    manage_webdav_backup_count(g_current_game_user_name, folder_name);
-    
+    manage_webdav_backup_count();
+
     log_file_fwrite("准备WebDAV上传, TID: %016lX, 用户: %s, 本地文件: %s", tid, g_current_game_user_name, local_zip_path);
-    
-    // 获取NTP时间戳用于云端存档命名
-    time_t ntp_time = get_ntp_time();
-    char ntp_timestamp[64];
-    
-    if (ntp_time == 0) {
-        // 如果NTP时间不可用，直接不上传
-        char debug_buf[256] = {0};
-        snprintf(debug_buf, sizeof(debug_buf), "NTP时间不可用, 跳过WebDAV上传");
-        log_file_write(debug_buf);
-        create_ultrahand_notification("无法获取时间，备份上传失败", 1);
-        NcmContentId content_id = {0};
-        struct AppName app_name = {0};
-        get_app_name(tid, &content_id, &app_name);
-        backuplog_fwrite("云端备份失败，仅备份至本地|%s|%s|0000.00.00@00.00.00", app_name.str, g_current_game_user_name);
-        return -1;
-    } else {
-        // 使用NTP时间戳
-        struct tm* tm_info = localtime(&ntp_time);
-        strftime(ntp_timestamp, sizeof(ntp_timestamp), "%Y.%m.%d@%H.%M.%S", tm_info);
-    }
     
     // 获取游戏标题名称并清理
     char sanitized_title[256] = {0};
@@ -3126,7 +3043,7 @@ static Result stream_zip_to_webdav(const char* local_zip_path, u64 tid) {
     
     // 清理用户名中的非法字符并验证
     char sanitized_username[256] = {0};
-    if (g_current_game_user_name && strlen(g_current_game_user_name) > 0) {
+    if (strlen(g_current_game_user_name) > 0) {
         strncpy(sanitized_username, g_current_game_user_name, sizeof(sanitized_username) - 1);
         sanitize_filename(sanitized_username);
         
@@ -3360,21 +3277,10 @@ static Result stream_zip_to_webdav(const char* local_zip_path, u64 tid) {
     if (res == CURLE_OK) {
         long http_code = 0;
         curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
-        
-        // 使用get_app_name获取游戏名
-        NcmContentId content_id = {0};
-        struct AppName app_name = {0};
-        get_app_name(tid, &content_id, &app_name);
 
         if (http_code == 201 || http_code == 200 || http_code == 204) {
             snprintf(debug_buf, sizeof(debug_buf), "WebDAV 上传成功: HTTP %ld, 已上传字节数: %lu", http_code, upload_data.total_uploaded);
             log_file_write(debug_buf);
-            
-            // WebDAV上传成功时发送Ultrahand通知
-            create_ultrahand_notification("备份上传成功", 1);
-            
-            // 写入备份记录: "上传成功|游戏名|用户名|时间戳" (2表示WebDAV上传成功)
-            backuplog_fwrite("云端备份成功|%s|%s|%s", app_name.str, g_current_game_user_name, ntp_timestamp);
             
             result = 0;
             
@@ -3382,11 +3288,6 @@ static Result stream_zip_to_webdav(const char* local_zip_path, u64 tid) {
         } else {
             snprintf(debug_buf, sizeof(debug_buf), "WebDAV 上传失败: HTTP %ld", http_code);
             log_file_write(debug_buf);
-            // WebDAV上传失败时发送Ultrahand通知
-            create_ultrahand_notification("备份上传失败", 2);
-            
-            // 写入备份记录: "上传失败|游戏名|用户名|时间戳" (3表示WebDAV上传失败)
-            backuplog_fwrite("云端备份失败，仅备份至本地|%s|%s|%s", app_name.str, g_current_game_user_name, ntp_timestamp);
             
             result = -1;
         }
@@ -3397,11 +3298,6 @@ static Result stream_zip_to_webdav(const char* local_zip_path, u64 tid) {
             snprintf(debug_buf, sizeof(debug_buf), "WebDAV 上传失败: %d", res);
         }
         log_file_write(debug_buf);
-        // WebDAV上传失败时发送Ultrahand通知
-        create_ultrahand_notification("备份上传失败", 2);
-        
-        // 写入备份记录: "上传失败|游戏名|用户名|时间戳" (3表示WebDAV上传失败)
-        backuplog_fwrite("云端备份失败，仅备份至本地|%s|%s|%s", sanitized_title, g_current_game_user_name, ntp_timestamp);
         
         result = -1;
     }
@@ -3484,6 +3380,12 @@ static Result stream_zip_to_webdav(const char* local_zip_path, u64 tid) {
             }
         }
     }
+
+    // 计时结束 - 计算执行时间并输出到0.01s精度
+    clock_gettime(CLOCK_MONOTONIC, &end_time);
+    double elapsed_time = (end_time.tv_sec - start_time.tv_sec) + 
+                        (end_time.tv_nsec - start_time.tv_nsec) / 1000000000.0;
+    log_file_fwrite("[计时]上传耗时: %.2f 秒", elapsed_time);
     
     return result;
 }
