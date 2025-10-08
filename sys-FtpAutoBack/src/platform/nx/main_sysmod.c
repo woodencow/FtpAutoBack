@@ -944,12 +944,6 @@ static void get_ntp_time(char* timestamp_buffer) {
     struct timespec start_time, end_time;
     clock_gettime(CLOCK_MONOTONIC, &start_time);
 
-    // 检查网络是否可用
-    if (!is_network_available()) {
-        log_file_write("网络不可用，无法同步时间");
-        return;
-    }
-
     int server_sock = -1;
     struct addrinfo hints, *servinfo = NULL;
     int status;
@@ -1495,9 +1489,9 @@ static void Get_Save_And_Upload() {
     struct AppName app_name = {0};
     get_app_name(g_previous_game_tid, &content_id, &app_name);
 
-    // 生成本地存档和上传结果的标志，默认为成功
-    bool save_success = true;
-    bool upload_success = true;
+    // 生成本地存档和上传结果的标志，默认为失败
+    bool save_success = false;
+    bool upload_success = false;
 
     // 生成存档依赖BSD套接字，所以必须在生成存档完成后，才能切换到标准套接字
     char NTPtimes[64] = "0000.00.00@00.00.00";
@@ -1507,6 +1501,12 @@ static void Get_Save_And_Upload() {
     char zip_path[FS_MAX_PATH] = {0};
     save_success = generate_save_archive(g_previous_game_tid,zip_path);
 
+    // 如果网络不可用，直接终止任务
+    if (!is_network_available()) {
+        log_file_write("网络不可用，终止任务！");
+        goto end;
+    }
+
     // 如果切换失败，直接终止任务
     if (R_FAILED(switch_to_webdav_mode())) goto end;
 
@@ -1515,51 +1515,52 @@ static void Get_Save_And_Upload() {
 
     // 如果获取存档失败，直接终止任务
     if (!save_success) goto end;
+    else create_ultrahand_notification("本地备份完成", 1);
 
     // 如果未启用上传功能，直接终止任务
     if (!webdav_config.enabled){
-        backuplog_write("未启用上传功能，终止任务！");
-        // 能执行到这里则代表本地备份肯定是成功的
-        create_ultrahand_notification("本地备份完成", 1);
-        backuplog_fwrite("本地备份成功|%s|%s|%s", app_name.str, g_current_game_user_name, NTPtimes);
+        log_file_write("未启用上传功能，终止任务！");
         goto end;
     }
 
     // 如果时间戳获取失败，则终止任务
     if (strcmp(NTPtimes, "0000.00.00@00.00.00") == 0) {
-        upload_success = false;
         goto end;
     }
 
     // 如果握手失败则终止任务
     if (!webdav_handshake()) {
-        upload_success = false;
         goto end;
     }
 
     // 上传到网盘，记录日志
     create_ultrahand_notification("开始云端备份", 1);
     Result upload_rc = stream_zip_to_webdav(zip_path, g_previous_game_tid, NTPtimes);
-    if (R_FAILED(upload_rc)) {
-        upload_success = false;
-        goto end;
-    }
-
-    // 如果上传成功，记录日志
-    create_ultrahand_notification("云端上传成功", 1);
-    backuplog_fwrite("云端备份成功|%s|%s|%s", app_name.str, g_current_game_user_name, NTPtimes);
+    if (R_SUCCEEDED(upload_rc)) upload_success = true;
+    
 
 end:
 
-    // 统一处理失败的日志记录
-    if (!save_success) {
+    // 统一处理备份日志处理 save_success 和 upload_success默认为false
+    // 几个if判断分别是以下几种情况
+    // 1. 本地备份失败
+    // 2. 本地备份成功，且未开启自动上传功能
+    // 3. 本地备份成功，且开启自动上传功能，上传失败（含无网络）
+    // 4. 本地备份成功，且开启自动上传功能，上传成功
+
+    if (!save_success) {      
         create_ultrahand_notification("本地备份失败", 2);
         backuplog_fwrite("本地备份失败|%s|%s|%s", app_name.str, g_current_game_user_name, NTPtimes);
-
+    } else if (!webdav_config.enabled && save_success) {
+        backuplog_fwrite("本地备份成功|%s|%s|%s", app_name.str, g_current_game_user_name, NTPtimes);
     } else if (!upload_success) {
         create_ultrahand_notification("云端备份失败", 2);
         backuplog_fwrite("云端备份失败，仅备份至本地|%s|%s|%s", app_name.str, g_current_game_user_name, NTPtimes);
+    } else if (upload_success) {
+        create_ultrahand_notification("云端上传成功", 1);
+        backuplog_fwrite("云端备份成功|%s|%s|%s", app_name.str, g_current_game_user_name, NTPtimes);
     }
+
 
     // 计时结束 - 计算执行时间并输出到0.01s精度
     clock_gettime(CLOCK_MONOTONIC, &end_time);
