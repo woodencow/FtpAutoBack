@@ -1009,7 +1009,7 @@ public:
         }), 30);
         list->addItem(new tsl::elm::CustomDrawer([](tsl::gfx::Renderer* renderer, s32 x, s32 y, s32 w, s32 h) {
             // 绘制警告文本，使用橙色作为警告颜色
-            renderer->drawString("  /config/FtpAutoBack/Confing.ini", false, x + 10, y + 30, 18, renderer->a({0xF, 0x8, 0x0, 0xF}));
+            renderer->drawString("  /config/ftpsv/confing.ini", false, x + 10, y + 30, 18, renderer->a({0xF, 0x8, 0x0, 0xF}));
         }), 30);
         
         frame->setContent(list);
