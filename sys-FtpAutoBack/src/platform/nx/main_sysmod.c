@@ -2479,7 +2479,13 @@ static bool webdav_handshake(void) {
     struct timespec start_time, end_time;
     clock_gettime(CLOCK_MONOTONIC, &start_time);
 
-    CURL *curl;
+    // 声明curl
+    CURL *curl = NULL;
+    // 声明HTTP头部列表
+    struct curl_slist *headers = NULL;  
+    // 声明响应数据结构体
+    struct WebDAVResponseData response_data = {0};
+
     CURLcode res;
     char url[128];
     bool handshake_success = false;
@@ -2522,7 +2528,6 @@ static bool webdav_handshake(void) {
     // CURLOPT_HTTPHEADER 设置HTTP请求头，这里设置 Depth: 0 表示只查询当前目录
     // Content-Type: text/xml; charset=\"utf-8\" 表示请求体为XML格式，编码为UTF-8
     // CURLOPT_HTTPHEADER ：将自定义头部列表应用到请求中
-    struct curl_slist *headers = NULL;
     headers = curl_slist_append(headers, "Depth: 0");
     headers = curl_slist_append(headers, "Content-Type: text/xml; charset=\"utf-8\"");
     curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
@@ -2558,8 +2563,6 @@ static bool webdav_handshake(void) {
         log_file_fwrite("任务终止！DNS 解析失败: %s", hostname);
     }
 
-    // 设置响应数据处理回调函数（修复崩溃问题）
-    struct WebDAVResponseData response_data;
     // 分配 1 字节的初始内存空间
     response_data.data = malloc(1);
     if (!response_data.data) {
@@ -2568,7 +2571,7 @@ static bool webdav_handshake(void) {
     }
     response_data.data[0] = '\0';
     response_data.size = 0;
-    
+
     // 配置libcurl，设置响应数据处理回调函数
     // CURLOPT_WRITEFUNCTION 设置响应数据处理回调函数，这里是 webdav_response_write_callback
     // CURLOPT_WRITEDATA 设置回调函数的上下文数据，这里是 &response_data
@@ -2593,22 +2596,16 @@ static bool webdav_handshake(void) {
         else log_file_fwrite("WebDAV 握手失败, error code: %d", res);
     }
 
-    
-
-    log_file_write("资源（HTTP头、curl句柄、响应数据）清理完成！");
-
 end:
 
     // 清理资源
-    if (curl) {
-        curl_slist_free_all(headers);
-        curl_easy_cleanup(curl);
-    }
-            
-    // 释放响应数据内存
-    if (response_data.data) {
-        free(response_data.data);
-    }
+    if (response_data.data) free(response_data.data);
+
+    if (headers) curl_slist_free_all(headers);
+
+    if (curl) curl_easy_cleanup(curl);
+    
+    log_file_write("资源（HTTP头、curl句柄、响应数据）清理完成！");
 
     // 计时结束 - 计算执行时间并输出到0.01s精度
     clock_gettime(CLOCK_MONOTONIC, &end_time);
