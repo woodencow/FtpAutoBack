@@ -2547,7 +2547,7 @@ static bool webdav_handshake(void) {
     }
     hostname[sizeof(hostname) - 1] = '\0';
 
-    // 进行DNS解析获取实际IP地址
+    // 进行DNS解析获取实际IP地址（去掉失败跳转，防止崩溃）
     host_entry = gethostbyname(hostname);
     if (host_entry != NULL) {
         struct in_addr addr;
@@ -2556,7 +2556,6 @@ static bool webdav_handshake(void) {
         log_file_fwrite("DNS 解析成功: %s -> %s", hostname, actual_ip);
     } else {
         log_file_fwrite("任务终止！DNS 解析失败: %s", hostname);
-        goto end;
     }
 
     // 设置响应数据处理回调函数（修复崩溃问题）
@@ -3757,5 +3756,6 @@ static u32 socketSelectVersion(void) {
         return 9;
     }
 }
+
 
  
