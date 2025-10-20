@@ -2622,23 +2622,34 @@ static bool create_webdav_directory(const char* dir_path) {
     CURL* curl = curl_easy_init();
     if (!curl) return false;
     
-    // 对目录路径进行URL编码以处理空格等特殊字符
-    char encoded_path[256];
-    CURL* curl_encode = curl_easy_init();
-    if (curl_encode) {
-        char* encoded = curl_easy_escape(curl_encode, dir_path, 0);
-        if (encoded) {
-            strncpy(encoded_path, encoded, sizeof(encoded_path) - 1);
-            curl_free(encoded);
-        } else {
-            strncpy(encoded_path, dir_path, sizeof(encoded_path) - 1);
-        }
-        curl_easy_cleanup(curl_encode);
-    } else {
-        strncpy(encoded_path, dir_path, sizeof(encoded_path) - 1);
-    }
+    // 手动编码路径：只编码特殊字符（空格等），保留斜杠分隔符
+    char encoded_path[512];
+    const char* src = dir_path;
+    char* dst = encoded_path;
+    size_t remaining = sizeof(encoded_path) - 1;
     
-    char mkcol_url[256];
+    while (*src && remaining > 3) {
+        if (*src == ' ') {
+            // 空格编码为 %20
+            *dst++ = '%'; *dst++ = '2'; *dst++ = '0';
+            remaining -= 3;
+        } else if (*src == '/' || *src == '-' || *src == '_' || *src == '.' || 
+                   (*src >= 'a' && *src <= 'z') || (*src >= 'A' && *src <= 'Z') || 
+                   (*src >= '0' && *src <= '9')) {
+            // 保留路径分隔符和安全字符
+            *dst++ = *src;
+            remaining--;
+        } else {
+            // 其他字符进行百分号编码
+            snprintf(dst, remaining + 1, "%%%02X", (unsigned char)*src);
+            dst += 3;
+            remaining -= 3;
+        }
+        src++;
+    }
+    *dst = '\0';
+
+    char mkcol_url[512];
     if (webdav_config.basepath[0] != '\0') {
         // 确保origin和basepath之间有正确的斜杠分隔符
         if (webdav_config.origin[strlen(webdav_config.origin)-1] == '/' && webdav_config.basepath[0] == '/') {
@@ -2671,12 +2682,17 @@ static bool create_webdav_directory(const char* dir_path) {
     curl_easy_setopt(curl, CURLOPT_USERNAME, webdav_config.username);
     curl_easy_setopt(curl, CURLOPT_PASSWORD, webdav_config.password);
     
-    curl_easy_perform(curl);
+    CURLcode res = curl_easy_perform(curl);
     long http_code = 0;
     curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
     
+    // 记录详细的创建结果日志
+    log_file_fwrite("MKCOL %s -> HTTP %ld (curl_code=%d)", mkcol_url, http_code, res);
+    
     curl_easy_cleanup(curl);
-    return (http_code == 201 || http_code == 405); // 201创建成功，405目录已存在
+    
+    // 兼容多种成功响应码：2xx 成功，405 目录已存在（视为成功）
+    return (http_code >= 200 && http_code < 300) || http_code == 405;
 }
 
 // WebDAV数据传输回调
@@ -3756,3 +3772,4 @@ static u32 socketSelectVersion(void) {
 
 
  
+
