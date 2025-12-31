@@ -2054,20 +2054,20 @@ static void manage_webdav_backup_count() {
     // 构造WebDAV目录URL - 修改为与本地路径一致的结构
     if (webdav_config.basepath[0] != '\0') {
         if (webdav_config.origin[strlen(webdav_config.origin)-1] == '/' && webdav_config.basepath[0] == '/') {
-            snprintf(url, sizeof(url), "%s%sAutoBack/%s/%s/", 
-                     webdav_config.origin, webdav_config.basepath + 1, g_current_game_user_name, encoded_game_folder);
+            snprintf(url, sizeof(url), "%s%sAutoBack/%s/", 
+                     webdav_config.origin, webdav_config.basepath + 1, tid_str);
         } else if (webdav_config.origin[strlen(webdav_config.origin)-1] != '/' && webdav_config.basepath[0] != '/') {
-            snprintf(url, sizeof(url), "%s/%s/AutoBack/%s/%s/", 
-                     webdav_config.origin, webdav_config.basepath, g_current_game_user_name, encoded_game_folder);
+            snprintf(url, sizeof(url), "%s%sAutoBack/%s/", 
+                     webdav_config.origin, webdav_config.basepath, tid_str);
         } else {
-            snprintf(url, sizeof(url), "%s%sAutoBack/%s/%s/", 
-                     webdav_config.origin, webdav_config.basepath, g_current_game_user_name, encoded_game_folder);
+            snprintf(url, sizeof(url), "%s%sAutoBack/%s/", 
+                     webdav_config.origin, webdav_config.basepath, tid_str);
         }
     } else {
         if (webdav_config.origin[strlen(webdav_config.origin)-1] == '/') {
-            snprintf(url, sizeof(url), "%sAutoBack/%s/%s/", webdav_config.origin, g_current_game_user_name, encoded_game_folder);
+            snprintf(url, sizeof(url), "%s%sAutoBack/%s/", webdav_config.origin, tid_str);
         } else {
-            snprintf(url, sizeof(url), "%s/AutoBack/%s/%s/", webdav_config.origin, g_current_game_user_name, encoded_game_folder);
+            snprintf(url, sizeof(url), "%s%sAutoBack/%s/", webdav_config.origin, tid_strr);
         }
     }
     
@@ -3772,4 +3772,5 @@ static u32 socketSelectVersion(void) {
 
 
  
+
 
